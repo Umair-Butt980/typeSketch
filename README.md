@@ -27,6 +27,7 @@ can type a diagram into.
 | P1a — Grammar and IR | ✅ |
 | P1b — Registry and renderers | ✅ |
 | P1c — Layout and canvas | ✅ |
+| P1d — Header, save/open, export, help | ✅ |
 | P2 — Full DSL (groups, aliases, styles) | next |
 | P2.5 — Manual layout | |
 | P3 — Persistence | |
@@ -43,11 +44,22 @@ Requires Node ≥22 and pnpm.
 
 ```sh
 pnpm install
+cp .env.example .env.local   # optional — MongoDB connection
 pnpm dev          # http://localhost:3000 — the editor
                   # /gallery renders all 30 archetypes in both modes
 pnpm test         # vitest
 pnpm typecheck
 pnpm lint
+```
+
+### Storage
+
+Documents save to MongoDB when `MONGODB_URI` points at a reachable server, and
+to the browser's localStorage when it does not. The app never refuses to save;
+it tells you which of the two it used.
+
+```sh
+docker run -d -p 27017:27017 --name typesketch-mongo mongo:7
 ```
 
 ### Layout

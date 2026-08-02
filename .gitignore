@@ -18,3 +18,4 @@ pnpm-debug.log*
 
 # Vendored from node_modules by scripts/vendor-elk-worker.mjs
 public/elk-worker.min.js
+public/fonts/
