@@ -283,8 +283,22 @@ The panes are **bidirectionally linked by node ID**: cursor on a line highlights
 
 Because the source text is authoritative, the server does almost nothing interesting. That is the point, and it is why this scales: parsing, layout and rendering all happen on the user's machine.
 
-- Next.js route handlers, MongoDB via Mongoose, Auth.js.
-- `POST /api/render` takes source text plus an override map, runs the identical core pipeline, returns SVG or PNG.
+- Next.js route handlers, MongoDB via Mongoose, Auth.js (P3).
+- `POST /api/render` takes source text plus an override map, runs the identical core pipeline, returns SVG or PNG (P4).
+
+### Storage degrades rather than refusing
+
+`GET`/`POST /api/documents` return `503` with `backend: "none"` when `MONGODB_URI` is unset or unreachable, and the client store falls back to `localStorage`. This is a diagramming tool, not a database client — refusing to save because nobody started `mongod` would be a poor trade. **Which tier was used is returned rather than hidden**, so the UI can say "saved in this browser only" instead of implying a durability it does not have.
+
+The connection is cached on `globalThis` (Next re-evaluates modules on every edit, so an uncached pool leaks connections within minutes) and uses a 2-second server-selection timeout — Mongo's 30-second default would make every save appear to hang when nothing is listening.
+
+Version history is best-effort: writing `documents` and `versions` atomically needs a transaction, and transactions need a replica set, which a plain local `mongod` is not. Losing a history entry beats refusing to save the user's work, so that failure is swallowed deliberately.
+
+### Export is the same code, different sink
+
+`core/export/svg.ts` reuses `render/` verbatim, which is the payoff for keeping it free of React and the DOM: an export is not a second renderer to keep in step. Rough.js seeding makes it exact — a downloaded file has byte-identical strokes to the canvas.
+
+Two details worth keeping: an SVG rasterised inside an `<img>` cannot fetch external resources, so the handwriting woff2 is inlined as a base64 `@font-face` or PNG text would silently fall back; and `ClipboardItem` is handed a *promise* rather than an awaited blob, because Safari drops the user-gesture permission across an `await`.
 
 ```js
 documents       { _id, teamId, title, source, overrides, renderMode, updatedAt }
@@ -324,7 +338,8 @@ Two Mongo-specific notes, since it will not enforce for free what a relational s
 - **P0 — Skeleton.** ✅ Next.js app, Tailwind + shadcn wiring, `src/core` boundaries with the lint zone, Vitest, IR/registry/override contracts.
 - **P1a — Grammar and IR.** ✅ Chevrotain lexer and parser with per-line error tolerance, AST, IR builder with stable ids, differ. 56 tests including the ID-stability property test.
 - **P1b — Registry and renderers.** ✅ 30 archetypes as geometry, both render modes over seeded Rough.js, isomorphic sizing, `NodeShape`, and `/gallery`. 112 tests including the anti-shimmer guarantee.
-- **P1c — Layout and canvas.** ✅ Off-thread ELK layout, custom `SketchEdge` (bezier, self-loop arcs, hand-drawn arrowheads, labels), React Flow canvas, split-pane shell with CodeMirror and a diagnostics strip. 162 tests.
+- **P1c — Layout and canvas.** ✅ Off-thread ELK layout, custom `SketchEdge` (bezier, self-loop arcs, hand-drawn arrowheads, labels), React Flow canvas, split-pane shell with CodeMirror and a diagnostics strip.
+- **P1d — Chrome, persistence and export.** ✅ Two-row header, New/Open/Save with a MongoDB-or-localStorage store, SVG/PNG/source/JSON download, copy-to-clipboard, and a Help sheet documenting the syntax. 179 tests.
   *Known gaps, deliberately deferred:* dragging works but is not persisted (P2.5), the editor has no TypeSketch language mode so diagnostics sit in a strip rather than underlining inline (P2), and edge control points are not yet draggable (P2.5).
 - **P2 — Full DSL.** Groups, aliases, `style`, hierarchical layout, ~120 archetypes, editor autocomplete and diagnostics, cursor ↔ node linking.
 - **P2.5 — Manual layout.** Node dragging, pinned-node handling, edge control points, orphan GC, Reset layout. Before persistence, so the override shape is settled first.
