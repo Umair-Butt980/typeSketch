@@ -27,7 +27,7 @@ login-page -"redirect to dashboard"-> user
 export default function EditorPage() {
   const [source, setSource] = useState(SAMPLE);
   const [mode, setMode] = useState<RenderMode>("sketch");
-  const { graph, layout, laidOut } = useDiagram(source);
+  const { graph, layout, laidOut, layoutError } = useDiagram(source);
 
   const errors = graph.diagnostics.filter((d) => d.severity === "error");
   const warnings = graph.diagnostics.filter((d) => d.severity === "warning");
@@ -99,7 +99,12 @@ export default function EditorPage() {
         <ResizablePanel defaultSize="64%" minSize="30%">
           <div className="relative h-full">
             <Canvas graph={graph} layout={layout} mode={mode} />
-            {!laidOut && graph.nodes.length > 0 ? (
+
+            {layoutError ? (
+              <div className="bg-destructive/10 text-destructive absolute inset-x-0 top-0 z-20 px-4 py-2 text-xs">
+                Layout failed: {layoutError}
+              </div>
+            ) : !laidOut && graph.nodes.length > 0 ? (
               <div className="text-muted-foreground pointer-events-none absolute inset-0 flex items-center justify-center text-sm">
                 Laying out…
               </div>

@@ -65,15 +65,14 @@ src/
     ├── ir/                  types.ts · builder.ts · diff.ts
     ├── registry/            geometry.ts · archetypes.ts · resolver.ts
     ├── render/              seed.ts · paths.ts · measure.ts
-    ├── layout/              ELK adapter, override map, layout worker
+    ├── layout/              ELK adapter, override map
     ├── shapes/              React node/edge components  ← the React boundary
     └── export/              SVG / PNG / JSON emitters
 ```
 
 `render/` turns geometry into path data and is deliberately **not** React: the
-same code runs in the browser, in the layout worker and on the server for
-`/api/render`. `shapes/` is the thin React layer that paints what `render/`
-produced.
+same code runs in the browser and on the server for `/api/render`. `shapes/` is
+the thin React layer that paints what `render/` produced.
 
 `Diagnostic` sits at the core root rather than inside either package: the parser
 produces diagnostics and `IRGraph` carries them, so putting the type in `ir`
@@ -186,7 +185,7 @@ Path generation is additionally memoized on `${id}|${mode}|${w}x${h}` — every 
 
 ### Sizing is isomorphic, so it cannot measure text
 
-Layout runs in a Web Worker and again on the server; neither has a DOM. Node sizing therefore *estimates* text width from character count (`measureNode` in `render/measure.ts`) rather than measuring it. The estimate is deliberately generous — slightly too wide leaves air around a label, too narrow clips it, and clipping is the failure users notice.
+The same sizing code runs in the browser and again on the server for `/api/render`, where there is no DOM to measure text with. Node sizing therefore *estimates* text width from character count (`measureNode` in `render/measure.ts`) rather than measuring it — measuring in the browser would give a better fit but make the two disagree, and an export that does not match the canvas is worse than a slightly loose label. The estimate is deliberately generous: too wide leaves air around a label, too narrow clips it, and clipping is the failure users notice.
 
 `labelSlot` is why this is not one formula: an inside label grows its shape horizontally, while a `below` label grows the footprint vertically and leaves the shape untouched. An actor is a fixed-size stick figure with text underneath, not a box with text in it.
 
@@ -211,12 +210,22 @@ React Flow's built-in edges provide none of what is needed here — no control-p
 
 `elkjs` with `layered`, direction `RIGHT`, hierarchy enabled so `group` blocks are real nested containers.
 
-- **ELK runs in a Web Worker.** Layout of a 60-node graph is tens of milliseconds; on the main thread that is a visible stutter on every keystroke. The worker is created lazily, so ELK — a large bundle — stays out of the initial page chunk.
+- **Layout runs off the main thread** — in ELK's own worker. Layout of a 60-node graph is tens of milliseconds; on the main thread that is a visible stutter on every keystroke.
 - **Previous positions feed back in as hints**, so adding a node nudges the diagram rather than re-solving from scratch and teleporting everything.
 - Parse runs synchronously per keystroke; layout is debounced ~120ms and skipped entirely for cosmetic diffs.
 - **Self-loops never reach ELK.** It routes them poorly, and they carry no layout information anyway: a node's loop is drawn from that node's own box, so it cannot influence where anything sits.
 
-**Layout degrades rather than disappearing.** `createLayoutClient` falls back to main-thread layout in three cases: no `Worker` at all (server render, jsdom), a bundler that cannot construct one, and a worker that dies at runtime — where in-flight requests are retried on the main thread rather than rejected. The failure this avoids is the worst one available: a permanently empty canvas with no error.
+### Feeding ELK a worker, and why it needs help
+
+`elkjs` finds its solver through an internal browserify `require('./elk-worker.min.js')`. Turbopack resolves that to the real file and inlines it — and that file, evaluated on its own, exports no `Worker`. The result is `TypeError: _Worker is not a constructor` on the very first layout, in the browser only.
+
+So ELK is constructed with an explicit `workerFactory` pointing at `/elk-worker.min.js`, served as a plain asset. A URL fetched at runtime gives a bundler nothing to rewrite. `scripts/vendor-elk-worker.mjs` copies the file out of `node_modules` on `predev`/`prebuild`, and the copy is gitignored so it cannot drift from the installed elkjs.
+
+Under Node and jsdom there is no `Worker` at all, so elkjs uses its bundled in-process solver instead. **That difference is a live testing hazard**: the whole suite passed while every browser layout threw, because Node and the browser take different paths through elkjs and only one is covered. Anything touching layout construction needs checking in a browser, not just under Vitest.
+
+TypeSketch does **not** wrap this in a worker of its own. An earlier version did, and it bought nothing: ELK already works off-thread, so the extra layer added a second hop of message passing and made ELK's worker a *nested* one — which Safari only supports from 16.4.
+
+`useDiagram` surfaces a `layoutError` rather than swallowing it. A silently failed layout is indistinguishable from a hang, and reads to the user as "the app is broken" with nothing to go on.
 
 ### How positions survive typing
 
@@ -315,7 +324,7 @@ Two Mongo-specific notes, since it will not enforce for free what a relational s
 - **P0 — Skeleton.** ✅ Next.js app, Tailwind + shadcn wiring, `src/core` boundaries with the lint zone, Vitest, IR/registry/override contracts.
 - **P1a — Grammar and IR.** ✅ Chevrotain lexer and parser with per-line error tolerance, AST, IR builder with stable ids, differ. 56 tests including the ID-stability property test.
 - **P1b — Registry and renderers.** ✅ 30 archetypes as geometry, both render modes over seeded Rough.js, isomorphic sizing, `NodeShape`, and `/gallery`. 112 tests including the anti-shimmer guarantee.
-- **P1c — Layout and canvas.** ✅ ELK in a worker with main-thread fallback, custom `SketchEdge` (bezier, self-loop arcs, hand-drawn arrowheads, labels), React Flow canvas, split-pane shell with CodeMirror and a diagnostics strip. 157 tests.
+- **P1c — Layout and canvas.** ✅ Off-thread ELK layout, custom `SketchEdge` (bezier, self-loop arcs, hand-drawn arrowheads, labels), React Flow canvas, split-pane shell with CodeMirror and a diagnostics strip. 162 tests.
   *Known gaps, deliberately deferred:* dragging works but is not persisted (P2.5), the editor has no TypeSketch language mode so diagnostics sit in a strip rather than underlining inline (P2), and edge control points are not yet draggable (P2.5).
 - **P2 — Full DSL.** Groups, aliases, `style`, hierarchical layout, ~120 archetypes, editor autocomplete and diagnostics, cursor ↔ node linking.
 - **P2.5 — Manual layout.** Node dragging, pinned-node handling, edge control points, orphan GC, Reset layout. Before persistence, so the override shape is settled first.

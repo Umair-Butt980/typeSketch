@@ -24,6 +24,8 @@ export interface Diagram {
   graph: IRGraph;
   layout: LayoutResult;
   laidOut: boolean;
+  /** Surfaced rather than swallowed: a silent stall is indistinguishable from a hang. */
+  layoutError: string | null;
 }
 
 /**
@@ -43,9 +45,23 @@ export function useDiagram(
 
   const [layout, setLayout] = useState<LayoutResult>(NO_LAYOUT);
   const [laidOut, setLaidOut] = useState(false);
+  const [layoutError, setLayoutError] = useState<string | null>(null);
 
   const clientRef = useRef<LayoutClient | null>(null);
-  const previousGraph = useRef<IRGraph>(EMPTY_GRAPH);
+  /**
+   * The graph currently *on screen* — not merely the last one seen.
+   *
+   * This distinction matters more than it looks. Advancing it on sight would
+   * make the effect non-idempotent: React re-invokes effects (StrictMode does
+   * so deliberately), and a second run would compare the graph against itself,
+   * conclude nothing changed, and skip the layout the first run had just had
+   * cancelled. The canvas would sit on "Laying out…" forever — in development
+   * only, since production does not double-invoke.
+   *
+   * Advancing it only on success keeps the effect safe to run any number of
+   * times: until a layout actually lands, the work is still outstanding.
+   */
+  const renderedGraph = useRef<IRGraph>(EMPTY_GRAPH);
   const latestRequest = useRef(0);
 
   useEffect(() => {
@@ -57,9 +73,7 @@ export function useDiagram(
   }, []);
 
   useEffect(() => {
-    const change = diffGraphs(previousGraph.current, graph);
-    previousGraph.current = graph;
-    if (!needsRelayout(change)) return;
+    if (!needsRelayout(diffGraphs(renderedGraph.current, graph))) return;
 
     const token = ++latestRequest.current;
     const timer = setTimeout(() => {
@@ -71,17 +85,21 @@ export function useDiagram(
         .then((result) => {
           // Drop results for edits the user has already typed past.
           if (token !== latestRequest.current) return;
+          renderedGraph.current = graph;
           setLayout(result);
           setLaidOut(true);
+          setLayoutError(null);
         })
-        .catch(() => {
-          // A failed layout leaves the previous one on screen, which is far
-          // better than blanking the canvas.
+        .catch((error: unknown) => {
+          if (token !== latestRequest.current) return;
+          // The previous layout stays on screen — far better than blanking the
+          // canvas — but the failure is reported rather than hidden.
+          setLayoutError(error instanceof Error ? error.message : String(error));
         });
     }, LAYOUT_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
   }, [graph, overrides]);
 
-  return { graph, layout, laidOut };
+  return { graph, layout, laidOut, layoutError };
 }

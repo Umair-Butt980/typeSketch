@@ -127,7 +127,34 @@ function extentOf(nodes: LaidOutNode[]): { width: number; height: number } {
   return { width, height };
 }
 
-const elk = new ELK();
+/** Served from `public/`; see scripts/vendor-elk-worker.mjs for why. */
+const ELK_WORKER_URL = "/elk-worker.min.js";
+
+let instance: InstanceType<typeof ELK> | null = null;
+
+/**
+ * ELK runs its own worker, and how it gets one depends on where we are.
+ *
+ * In a browser we hand it an explicit `workerFactory`. Without one, elkjs falls
+ * back to an internal `require('./elk-worker.min.js')` that Turbopack rewrites
+ * into a module exporting no `Worker` — so layout throws on the very first call
+ * and the canvas stays empty. Supplying a factory means that branch is never
+ * reached.
+ *
+ * Under Node and jsdom there is no `Worker` at all, so elkjs's bundled
+ * in-process fallback is used instead. That path works, which is why the test
+ * suite never caught the browser failure.
+ */
+function elk(): InstanceType<typeof ELK> {
+  if (instance) return instance;
+
+  instance =
+    typeof Worker === "undefined"
+      ? new ELK()
+      : new ELK({ workerFactory: () => new Worker(ELK_WORKER_URL) });
+
+  return instance;
+}
 
 export async function layoutGraph(
   graph: IRGraph,
@@ -137,7 +164,7 @@ export async function layoutGraph(
     return { nodes: [], width: 0, height: 0 };
   }
 
-  const result = (await elk.layout(toElkGraph(graph, overrides))) as ElkNode;
+  const result = (await elk().layout(toElkGraph(graph, overrides))) as ElkNode;
 
   const laidOut: LaidOutNode[] = (result.children ?? []).map((child) => ({
     id: child.id,

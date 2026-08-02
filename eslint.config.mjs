@@ -30,7 +30,8 @@ const config = [
   ...next,
   ...nextTypescript,
   {
-    ignores: [".next/**", "node_modules/**", "next-env.d.ts"],
+    // `public/` holds vendored third-party assets, not source.
+    ignores: [".next/**", "node_modules/**", "public/**", "next-env.d.ts"],
   },
   {
     files: ISOMORPHIC_CORE,

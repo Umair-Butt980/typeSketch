@@ -15,3 +15,6 @@ pnpm-debug.log*
 
 .DS_Store
 *.tsbuildinfo
+
+# Vendored from node_modules by scripts/vendor-elk-worker.mjs
+public/elk-worker.min.js

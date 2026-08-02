@@ -7,7 +7,10 @@
     "node": ">=22"
   },
   "scripts": {
+    "vendor:elk": "node scripts/vendor-elk-worker.mjs",
+    "predev": "pnpm vendor:elk",
     "dev": "next dev",
+    "prebuild": "pnpm vendor:elk",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

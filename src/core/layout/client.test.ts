@@ -7,12 +7,15 @@ import { createLayoutClient } from "./client";
 const build = (source: string) => buildIR(parse(source), registryResolver);
 
 /**
- * These run under Node, where there is no `Worker`, so they exercise the
- * fallback path. That path exists for server render and for tests, and it must
- * produce exactly what the worker would — otherwise `/api/render` and the
- * canvas would disagree, which is the whole thing the isomorphic core prevents.
+ * These run under Node, where there is no `Worker`, so ELK uses its bundled
+ * in-process solver rather than spawning one.
+ *
+ * Worth being blunt about the limit: that difference is exactly why this suite
+ * stayed green while the browser threw `_Worker is not a constructor` on every
+ * layout. Node and the browser take different paths through elkjs, and only one
+ * of them is covered here.
  */
-describe("createLayoutClient without a Worker", () => {
+describe("createLayoutClient under Node", () => {
   it("falls back to laying out on the calling thread", async () => {
     const client = createLayoutClient();
     const result = await client.layout(build("user -> api -> db"), {});

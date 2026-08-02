@@ -9,4 +9,3 @@ export {
   type LayoutResult,
 } from "./elk-strategy";
 export { createLayoutClient, type LayoutClient } from "./client";
-export type { LayoutRequest, LayoutResponse } from "./protocol";
