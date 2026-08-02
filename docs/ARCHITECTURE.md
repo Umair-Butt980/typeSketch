@@ -63,11 +63,17 @@ src/
     ├── diagnostics.ts       Diagnostic — shared by lang and ir
     ├── lang/                tokens.ts · ast.ts · parser.ts
     ├── ir/                  types.ts · builder.ts · diff.ts
-    ├── registry/            archetypes as geometry + alias table
+    ├── registry/            geometry.ts · archetypes.ts · resolver.ts
+    ├── render/              seed.ts · paths.ts · measure.ts
     ├── layout/              ELK adapter, override map, layout worker
     ├── shapes/              React node/edge components  ← the React boundary
     └── export/              SVG / PNG / JSON emitters
 ```
+
+`render/` turns geometry into path data and is deliberately **not** React: the
+same code runs in the browser, in the layout worker and on the server for
+`/api/render`. `shapes/` is the thin React layer that paints what `render/`
+produced.
 
 `Diagnostic` sits at the core root rather than inside either package: the parser
 produces diagnostics and `IRGraph` carries them, so putting the type in `ir`
@@ -154,6 +160,12 @@ Without this split, every one of ~120 archetypes would have to be authored twice
 
 Unknown labels fall back to a plain labelled rectangle — never an error, never a block. Resolution sits behind `ShapeResolver` so the v2 LLM tier is additive rather than a rewrite.
 
+**Compound names resolve by segment.** Exact match first, then the trailing dash-segment, then the leading one: `user-db` finds `db`, `auth-api` finds `api`, `session-store` finds `store`. Trailing wins because English compounds are head-final. Without this the alias table would have to be combinatorial, and the reference diagram — which is entirely compound names — would render as a wall of plain boxes.
+
+Every alias belongs to exactly one archetype, asserted by a test: a word resolving two ways would make the drawn shape depend on iteration order, which is precisely the non-determinism the registry-only design exists to avoid.
+
+The full table is in [`LANGUAGE.md`](./LANGUAGE.md#shapes), and `/gallery` renders all 30 in both modes.
+
 ## Rendering (`src/core/shapes`)
 
 Two renderers over one geometry:
@@ -168,11 +180,21 @@ Rough.js output is randomised. Called fresh on every React render, the same box 
 1. Pass an explicit **`seed` derived from a hash of the stable node/edge ID**. Same node, same wobble — forever, across reloads, and across client and server render.
 2. Generate through `rough.generator()` (not the canvas/SVG wrappers) and **memoize the drawable on `[id, w, h, mode]`**, so typing an unrelated line does not regenerate paths.
 
-Seeding also buys server/client parity for free: `/api/render` produces byte-identical output to the canvas.
+Seeding also buys server/client parity for free: `/api/render` produces byte-identical output to the canvas. `seedFor()` is FNV-1a over the node id, and each primitive within a shape is seeded from `${id}#${index}` so a stick figure's five strokes wobble differently without any of them being random.
+
+Path generation is additionally memoized on `${id}|${mode}|${w}x${h}` — every input that can change the output, so a cache hit is always correct rather than merely likely.
+
+### Sizing is isomorphic, so it cannot measure text
+
+Layout runs in a Web Worker and again on the server; neither has a DOM. Node sizing therefore *estimates* text width from character count (`measureNode` in `render/measure.ts`) rather than measuring it. The estimate is deliberately generous — slightly too wide leaves air around a label, too narrow clips it, and clipping is the failure users notice.
+
+`labelSlot` is why this is not one formula: an inside label grows its shape horizontally, while a `below` label grows the footprint vertically and leaves the shape untouched. An actor is a fixed-size stick figure with text underneath, not a box with text in it.
+
+**Sketch and Clean differ only in path data and typeface — never in size or position.** Measurement lives outside the renderers entirely so this holds by construction, and there is a component test per archetype asserting it.
 
 Sketch parameters: `roughness: 1.2`, `bowing: 1.5`, `strokeWidth: 1.6`, ink `--ink`, fill `--paper`, `fillStyle: 'solid'`.
 
-**Fonts** — sketch mode needs a handwritten face, self-hosted via `next/font/local`. License must be verified as redistributable before vendoring.
+**Fonts** — sketch mode uses **Architects Daughter** (`@fontsource/architects-daughter`, OFL-1.1, self-hosted). Excalifont, the face in the reference screenshot, is not published to npm; Architects Daughter is the closest upright hand-lettering available under a redistributable licence. Caveat is too script-like and Kalam too marker-pen for technical diagrams. Clean mode uses the system UI stack. Both are wired through `--font-hand` / `--font-sans`, so the face is a CSS concern and never reaches the geometry.
 
 ### Edges
 
@@ -283,7 +305,7 @@ Two Mongo-specific notes, since it will not enforce for free what a relational s
 
 - **P0 — Skeleton.** ✅ Next.js app, Tailwind + shadcn wiring, `src/core` boundaries with the lint zone, Vitest, IR/registry/override contracts.
 - **P1a — Grammar and IR.** ✅ Chevrotain lexer and parser with per-line error tolerance, AST, IR builder with stable ids, differ. 56 tests including the ID-stability property test.
-- **P1b — Registry and renderers.** ~30 archetypes as geometry, `SketchRenderer` and `CleanRenderer`, seeded Rough.js, the anti-shimmer test.
+- **P1b — Registry and renderers.** ✅ 30 archetypes as geometry, both render modes over seeded Rough.js, isomorphic sizing, `NodeShape`, and `/gallery`. 112 tests including the anti-shimmer guarantee.
 - **P1c — Layout and canvas.** ELK in a worker, custom edge component, split-pane shell. *Milestone: `user -> database` draws a connected stick figure and cylinder in sketch style; `<>` adds a second arrowhead; toggling to Clean redraws crisply with no layout change.*
 - **P2 — Full DSL.** Groups, aliases, `style`, hierarchical layout, ~120 archetypes, editor autocomplete and diagnostics, cursor ↔ node linking.
 - **P2.5 — Manual layout.** Node dragging, pinned-node handling, edge control points, orphan GC, Reset layout. Before persistence, so the override shape is settled first.

@@ -71,20 +71,85 @@ api -"verify password hash"-> api
 
 ### Explicit shape — v1
 
-Normally the shape is chosen by looking the name up in the registry (`database`,
-`db`, `postgres` → cylinder). When the name does not imply the shape you want,
-say so with a colon.
+Normally the shape is chosen by looking the name up in the registry — see
+[Shapes](#shapes) below. When the name does not imply the shape you want, say so
+with a colon.
 
 ```
-cache:redis
-sessions:database
+sessions:redis      draw "Sessions" as a cache
+audit:document      draw "Audit" as a document
 ```
+
+The value after the colon is itself looked up in the registry, so any alias
+works: `:redis`, `:cache` and `:memcached` all mean the same shape.
 
 An unknown word is never an error — it renders as a plain labelled rectangle.
+An unknown *override* is a warning, and the name is used instead.
 
-Contradicting yourself is a warning, not an error: if `cache:redis` is followed
-by `cache:memcached`, the first wins and the second is flagged. The diagram
+Contradicting yourself is also a warning, not an error: if `sessions:redis` is
+followed by `sessions:s3`, the first wins and the second is flagged. The diagram
 never flip-flops.
+
+## Shapes
+
+The shape comes from the name. `database`, `db`, `postgres`, `rds` and `mysql`
+all draw a cylinder.
+
+**Compound names resolve by their last word.** This is what makes real naming
+work without memorising a vocabulary:
+
+```
+user-db          → cylinder     (db)
+auth-api         → service      (api)
+session-store    → drum         (store)
+login-page       → browser      (page)
+payment-worker   → hexagon      (worker)
+```
+
+If the last word is unknown, the first is tried, so `api-thingamajig` still
+draws a service. Trailing wins because English compounds are head-final — the
+last word is the noun.
+
+The 30 archetypes, with a few aliases each:
+
+| Shape | Aliases |
+|---|---|
+| `actor` — stick figure | user, customer, client, person, admin |
+| `service` — rounded box | api, backend, server, microservice, app |
+| `database` — cylinder | db, postgres, mysql, rds, sql |
+| `cache` — double cylinder | redis, memcached, elasticache |
+| `queue` — slotted bar | kafka, sqs, rabbitmq, pubsub, topic |
+| `storage` — drum | s3, bucket, blob, disk, store |
+| `function` — hexagon | lambda, fn, worker, job, task |
+| `browser` — window frame | web, frontend, spa, ui, page |
+| `mobile` — phone | ios, android, phone, device |
+| `external` — dashed box | third-party, vendor, saas, partner |
+| `cdn` — cloud | edge, cloudfront |
+| `cloud` — cloud | aws, gcp, azure, datacenter |
+| `balancer` — fan | lb, proxy, nginx, ingress, gateway |
+| `auth` — shield | authentication, oauth, idp, sso |
+| `firewall` — shield | waf, security |
+| `search` | elasticsearch, opensearch, solr, index |
+| `analytics` | metrics, telemetry, tracking, dashboard |
+| `monitoring` | prometheus, grafana, alerting, alerts |
+| `mail` | email, smtp, sendgrid, notifications |
+| `payment` | stripe, billing, checkout |
+| `container` — square box | docker, pod, k8s, cluster |
+| `logs` — document | logging, elk, splunk, datadog, audit |
+| `document` — document | file, doc, report, pdf, spec |
+| `config` | settings, env, secrets, vault |
+| `scheduler` — hexagon | cron, timer, schedule |
+| `decision` — diamond | branch, condition, check |
+| `terminal` — stadium | start, end, done, finish |
+| `process` — square box | step, action, operation |
+| `note` — dashed box | comment, annotation, memo |
+| `box` — square box | *(the fallback)* node, component, system |
+
+Every alias belongs to exactly one archetype — there is a test asserting it,
+because a word that resolved two ways would make the drawn shape depend on
+iteration order.
+
+Browse them all at `/gallery` while the dev server is running.
 
 ### Title — v1
 

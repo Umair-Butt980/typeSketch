@@ -1,31 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "@/core/lang";
+import { registryResolver } from "@/core/registry";
 import type { Archetype, ShapeResolver } from "@/core/registry/types";
 import { buildIR, humanize, nodeId } from "./builder";
 
-/**
- * P1b brings the real registry. Until then the builder is exercised against a
- * stub, which is the point of taking a `ShapeResolver` rather than importing
- * one: resolution is injected, so the builder is testable on its own.
- */
-const ALIASES: Record<string, string> = {
-  user: "actor",
-  customer: "actor",
-  api: "service",
-  database: "database",
-  db: "database",
-  queue: "queue",
-};
-
-const stubResolver: ShapeResolver = {
-  resolve(label) {
-    const name = ALIASES[label.toLowerCase()];
-    return name ? ({ name } as Archetype) : null;
-  },
-};
-
 function build(source: string) {
-  return buildIR(parse(source), stubResolver);
+  return buildIR(parse(source), registryResolver);
 }
 
 describe("humanize", () => {
@@ -47,9 +27,21 @@ describe("buildIR — nodes", () => {
     ]);
   });
 
-  it("resolves archetypes through the injected resolver", () => {
+  it("resolves archetypes through the registry", () => {
     const graph = build("user -> database");
     expect(graph.nodes.map((n) => n.archetype)).toEqual(["actor", "database"]);
+  });
+
+  /**
+   * Resolution is injected rather than imported, which is what lets the v2 LLM
+   * tier become a second implementation instead of a rewrite.
+   */
+  it("takes resolution from whatever resolver it is given", () => {
+    const everythingIsAQueue: ShapeResolver = {
+      resolve: () => ({ name: "queue" }) as Archetype,
+    };
+    const graph = buildIR(parse("user -> database"), everythingIsAQueue);
+    expect(graph.nodes.map((n) => n.archetype)).toEqual(["queue", "queue"]);
   });
 
   it("falls back to a box for unknown words rather than erroring", () => {
@@ -58,9 +50,25 @@ describe("buildIR — nodes", () => {
     expect(graph.diagnostics).toEqual([]);
   });
 
-  it("honours an explicit archetype override", () => {
-    const graph = build("cache:redis");
-    expect(graph.nodes[0]?.archetype).toBe("redis");
+  it("resolves an explicit archetype override through the registry", () => {
+    // `redis` is an alias, not an archetype name — the IR must carry `cache`
+    // or the renderer would have nothing to look up.
+    expect(build("sessions:redis").nodes[0]?.archetype).toBe("cache");
+  });
+
+  it("warns and falls back when the override names no known shape", () => {
+    const graph = build("api:squiggle");
+    expect(graph.nodes[0]?.archetype).toBe("service");
+    expect(graph.diagnostics[0]).toMatchObject({ severity: "warning" });
+  });
+
+  it("resolves compound names by their trailing segment", () => {
+    const graph = build("user-db -> auth-api -> session-store");
+    expect(graph.nodes.map((n) => n.archetype)).toEqual([
+      "database",
+      "service",
+      "storage",
+    ]);
   });
 
   it("declares each node once however often it is referenced", () => {
@@ -78,10 +86,15 @@ describe("buildIR — nodes", () => {
   });
 
   it("warns rather than flip-flopping when an archetype is contradicted", () => {
-    const graph = build(["cache:redis", "cache:memcached"].join("\n"));
-    expect(graph.nodes[0]?.archetype).toBe("redis");
+    const graph = build(["sessions:redis", "sessions:s3"].join("\n"));
+    expect(graph.nodes[0]?.archetype).toBe("cache");
     expect(graph.diagnostics).toHaveLength(1);
     expect(graph.diagnostics[0]).toMatchObject({ severity: "warning", line: 1 });
+  });
+
+  it("does not warn when two overrides agree", () => {
+    const graph = build(["sessions:redis", "sessions:memcached"].join("\n"));
+    expect(graph.diagnostics).toEqual([]);
   });
 
   it("treats identifiers case-insensitively", () => {

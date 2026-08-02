@@ -76,22 +76,43 @@ export function buildIR(
   const parallel = new Map<string, number>();
   let title: string | undefined;
 
+  /**
+   * `cache:redis` names a *shape*, and `redis` is an alias rather than an
+   * archetype name, so the override goes through the same resolver as the
+   * label. Otherwise the IR would carry `redis` and the renderer would have
+   * nothing to look up.
+   */
+  function explicitArchetype(ref: NodeRef, line: number): string | undefined {
+    if (!ref.archetype) return undefined;
+
+    const hit = resolver.resolve(ref.archetype);
+    if (hit) return hit.name;
+
+    diagnostics.push({
+      severity: "warning",
+      message: `Unknown shape \`${ref.archetype}\`; drawing \`${ref.name}\` from its name instead.`,
+      line,
+      from: ref.from,
+      to: ref.to,
+    });
+    return undefined;
+  }
+
   function declare(ref: NodeRef, line: number): string {
     const id = nodeId(ref.name);
+    const explicit = explicitArchetype(ref, line);
     const existing = nodes.get(id);
 
     if (!existing) {
       const archetype =
-        ref.archetype ??
-        resolver.resolve(ref.name)?.name ??
-        FALLBACK_ARCHETYPE;
+        explicit ?? resolver.resolve(ref.name)?.name ?? FALLBACK_ARCHETYPE;
       nodes.set(id, { id, label: humanize(ref.name), archetype, line });
       return id;
     }
 
-    // A later `cache:redis` should not silently retype a node already drawn as
-    // something else — say so rather than letting the diagram flip-flop.
-    if (ref.archetype && ref.archetype !== existing.archetype) {
+    // A later `cache:memcached` should not silently retype a node already drawn
+    // as something else — say so rather than letting the diagram flip-flop.
+    if (explicit && explicit !== existing.archetype) {
       diagnostics.push({
         severity: "warning",
         message: `\`${ref.name}\` is already drawn as \`${existing.archetype}\`; ignoring \`${ref.archetype}\`.`,

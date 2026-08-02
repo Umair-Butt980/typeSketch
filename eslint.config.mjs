@@ -14,6 +14,7 @@ const ISOMORPHIC_CORE = [
   "src/core/ir/**/*.ts",
   "src/core/registry/**/*.ts",
   "src/core/layout/**/*.ts",
+  "src/core/render/**/*.ts",
   "src/core/export/**/*.ts",
 ];
 

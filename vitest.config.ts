@@ -14,7 +14,9 @@ export default defineConfig({
         test: {
           name: "core",
           environment: "node",
-          include: ["src/core/{lang,ir,registry,layout,export}/**/*.test.ts"],
+          include: [
+            "src/core/{lang,ir,registry,layout,render,export}/**/*.test.ts",
+          ],
         },
       },
       {

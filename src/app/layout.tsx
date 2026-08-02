@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+// Self-hosted, OFL-1.1. Sketch mode's handwritten face — see --font-hand.
+import "@fontsource/architects-daughter/400.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

@@ -1,24 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "@/core/lang";
-import type { Archetype, ShapeResolver } from "@/core/registry/types";
+import { registryResolver } from "@/core/registry";
 import { buildIR } from "./builder";
 import { diffGraphs, needsRelayout } from "./diff";
 
-const ALIASES: Record<string, string> = {
-  user: "actor",
-  api: "service",
-  database: "database",
-  db: "database",
-};
-
-const stubResolver: ShapeResolver = {
-  resolve: (label) => {
-    const name = ALIASES[label.toLowerCase()];
-    return name ? ({ name } as Archetype) : null;
-  },
-};
-
-const build = (source: string) => buildIR(parse(source), stubResolver);
+const build = (source: string) => buildIR(parse(source), registryResolver);
 const diff = (before: string, after: string) =>
   diffGraphs(build(before), build(after));
 
@@ -36,7 +22,7 @@ describe("diffGraphs", () => {
   });
 
   it("treats a changed archetype as topological, since the footprint changes", () => {
-    expect(diff("cache:redis", "cache:drum")).toBe("topological");
+    expect(diff("sessions:redis", "sessions:s3")).toBe("topological");
   });
 
   /**

@@ -25,8 +25,8 @@ the canvas are next.
 |---|---|
 | P0 — Skeleton | ✅ |
 | P1a — Grammar and IR | ✅ |
-| P1b — Registry and renderers | next |
-| P1c — Layout and canvas | |
+| P1b — Registry and renderers | ✅ |
+| P1c — Layout and canvas | next |
 | P2 — Full DSL (groups, aliases, styles) | |
 | P2.5 — Manual layout | |
 | P3 — Persistence | |
@@ -44,6 +44,7 @@ Requires Node ≥22 and pnpm.
 ```sh
 pnpm install
 pnpm dev          # http://localhost:3000
+                  # /gallery renders all 30 archetypes in both modes
 pnpm test         # vitest
 pnpm typecheck
 pnpm lint
