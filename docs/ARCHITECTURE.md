@@ -1,0 +1,297 @@
+# TypeSketch — Architecture
+
+## What this is
+
+Diagramming tools built around direct manipulation (tldraw, Excalidraw, Lucidchart) make developers drag rectangles to express something they could say in eight characters. **TypeSketch removes the dragging.** You type `user -> database` and a stick-figure actor and a database cylinder appear, already connected, already laid out, drawn in a hand-sketched style.
+
+The primary user is an internal dev team documenting systems — architecture diagrams for design docs, PRs and onboarding — where the bottleneck is the effort of drawing, not the difficulty of thinking.
+
+**Core principle: the typed source is the single source of truth.** Structure is always derived from text, never stored as authoritative state. Only *presentation* — where a node was dragged, how an arrow was bowed — is stored alongside it.
+
+This one decision is what makes the product coherent. It gives diagrams-as-code semantics (diffable, reviewable, version-controllable), makes persistence a string column, makes v2 collaboration a matter of syncing one text buffer rather than a shape graph, and makes v2 voice input a pure front-end concern (speech produces text; nothing downstream changes).
+
+## Decisions
+
+| Area | Choice |
+|---|---|
+| Structure | **Single Next.js app**, isomorphic core in `src/core/` |
+| Language | TypeScript — grammar written once, runs in browser, worker and server |
+| Shape resolution | Predefined registry only; LLM parked behind `ShapeResolver` for v2 |
+| Canvas | React Flow (`@xyflow/react`) + ELK (`elkjs`) |
+| Rendering | Rough.js sketch mode + crisp Clean mode, both from v1 |
+| Edge editing | Draggable bezier control points, persisted per edge |
+| Syntax | Full DSL with grouping |
+| Diagram family | Architecture (boxes and arrows) only |
+| Database | MongoDB via Mongoose |
+| UI | Split pane — CodeMirror 6 editor left, canvas right |
+| UI kit | shadcn/ui + Tailwind for chrome only |
+| Testing | Unit + component tests (Vitest). Playwright deferred. |
+| Deployment | Internal dev tool first |
+
+### Why one app rather than a workspace
+
+TypeSketch has exactly one deployable, so "monolith vs monorepo" is really a question about code organisation, not deployment topology. Workspace packages would buy enforced module boundaries and reuse by a future VS Code extension — but a package boundary does not actually enforce isomorphism (nothing stops you importing React into a package), and the extension is speculative v2 work.
+
+Folders plus a lint rule give the same guarantee at a fraction of the friction: no `workspace:*` protocol, no `transpilePackages`, no six `package.json` files, no split test config. If the extension ever ships, promoting folders to packages is mechanical.
+
+### Why TypeScript everywhere
+
+The parser, graph IR and layout engine are all JavaScript libraries. The grammar is written **once** and the identical code runs in three places: the browser for sub-millisecond feedback on every keystroke, a Web Worker for layout, and the server for `/api/render`. A Python backend would still leave the browser needing a JS parser, so two grammars would exist and would inevitably drift — producing the bug class where the canvas and the exported PNG disagree.
+
+Python's genuine advantage is ML. v1 has none, and the v2 LLM tier is API calls rather than model hosting.
+
+## Pipeline
+
+One unidirectional pass, re-run as the user types. Each stage is a pure function ignorant of the next.
+
+```
+text ──► lex/parse ──► AST ──► IR builder ──► resolve ──► layout ──► render
+                        │                                    │          │
+                   diagnostics                          Web Worker   Sketch│Clean
+```
+
+This is what keeps the v2 extensions cheap: voice replaces the input to stage 1, an LLM resolver slots into `resolve`, and a sequence-diagram engine is a second implementation of `layout`.
+
+## Layout
+
+```
+src/
+├── app/                     Next.js App Router — routes, layouts, API handlers
+├── components/              React UI; shadcn primitives land in components/ui
+├── lib/                     app-level helpers (cn, client utils)
+└── core/                    the isomorphic core — no DOM, no React, no Node
+    ├── lang/                lexer, parser, AST, diagnostics
+    ├── ir/                  graph IR types, builder, differ
+    ├── registry/            archetypes as geometry + alias table
+    ├── layout/              ELK adapter, override map, layout worker
+    ├── shapes/              React node/edge components  ← the React boundary
+    └── export/              SVG / PNG / JSON emitters
+```
+
+**`src/core/{lang,ir,registry,layout,export}` must stay isomorphic** — no DOM, no React, no Node built-ins — so the browser, the worker and the server run identical code. This is enforced by a `no-restricted-imports` zone in `eslint.config.mjs`, not by convention. `src/core/shapes` is the deliberate exception: it is where React enters.
+
+## The grammar (`src/core/lang`)
+
+Built with Chevrotain. **Error-tolerant, statement-scoped parsing is non-negotiable**: while typing `user -> `, that line is incomplete, and a parser that throws would blank the canvas mid-keystroke. Each statement parses independently — a failure yields a diagnostic and is skipped, and every other statement still renders.
+
+```
+title "Authentication Service"      canvas title
+user -> api                         forward edge
+api <- worker                       reverse (normalised: swap source/target)
+api <> database                     bidirectional — arrowheads both ends
+api -- cdn                          undirected
+api -"publishes"-> queue            edge label
+api -"verify password hash"-> api   self-loop
+cache:redis                         explicit archetype override
+user -> api -> database             chaining, expands to two edges
+gateway as gw                       alias
+group backend { api -> database }   container, nests, participates in layout
+user -> backend.api                 qualified reference into a group
+style api { color: blue }           per-node style override
+```
+
+`<>` is **one** edge with `direction: 'both'`, never two opposing edges — two edges route as two separate splines and look visibly wrong.
+
+## The IR and the stability guarantee (`src/core/ir`)
+
+**Node IDs derive from the normalised label plus group path — never from line number or ordinal position.** `api` inside `group backend` is always `backend.api`, wherever that line sits in the document.
+
+Consequence: inserting a line at the top does not renumber nodes, so the differ sees an unchanged graph plus one addition and the canvas does not reshuffle under the user's cursor. Getting this wrong is the single most common way live-diagram tools feel broken.
+
+It is load-bearing three times over — it is also what keeps a dragged node's pin attached to the right node, and what keeps each shape's hand-drawn wobble identical across renders.
+
+Edge IDs are `${source}->${target}#${ordinal}`, where the ordinal disambiguates parallel edges.
+
+The differ classifies each change as *cosmetic* (label or style only) or *topological* (nodes/edges added or removed). Only topological changes trigger a relayout.
+
+## Archetypes are geometry, not markup (`src/core/registry`)
+
+This is the key decision that makes two render modes affordable. An archetype declares *what it is geometrically*; the renderers decide how to stroke it. A cylinder is "two arcs and two sides" — not an SVG string, not a React component.
+
+```ts
+type Prim =
+  | { k: "rect";    x: number; y: number; w: number; h: number; r?: number }
+  | { k: "ellipse"; cx: number; cy: number; rx: number; ry: number }
+  | { k: "line";    x1: number; y1: number; x2: number; y2: number }
+  | { k: "path";    d: string }
+```
+
+Without this split, every one of ~120 archetypes would have to be authored twice.
+
+| Archetype | Aliases | Geometry |
+|---|---|---|
+| `actor` | user, customer, client, person, admin | ellipse + 4 lines, label **below** |
+| `database` | db, postgres, mysql, rds, sql | cylinder path |
+| `service` | api, backend, microservice, server | rounded rect |
+| `queue` | kafka, sqs, rabbitmq, pubsub, topic | open-ended bar |
+| `cache` | redis, memcached | double cylinder |
+| `storage` | s3, bucket, blob, disk | drum |
+| `function` | lambda, fn, worker, job | hexagon |
+| `browser` | web, frontend, spa, ui | window frame |
+| `mobile` | app, ios, android | phone outline |
+| `external` | third-party, vendor, saas | dashed rect |
+
+Unknown labels fall back to a plain labelled rectangle — never an error, never a block. Resolution sits behind `ShapeResolver` so the v2 LLM tier is additive rather than a rewrite.
+
+## Rendering (`src/core/shapes`)
+
+Two renderers over one geometry:
+
+- **`CleanRenderer`** emits `<rect>`, `<ellipse>`, `<path>` directly. Crisp, UI font.
+- **`SketchRenderer`** feeds each primitive through Rough.js and emits the resulting path sets. Handwritten font.
+
+### The shimmer problem
+
+Rough.js output is randomised. Called fresh on every React render, the same box jitters differently each frame and the whole diagram visibly crawls while typing. Two mitigations, both mandatory:
+
+1. Pass an explicit **`seed` derived from a hash of the stable node/edge ID**. Same node, same wobble — forever, across reloads, and across client and server render.
+2. Generate through `rough.generator()` (not the canvas/SVG wrappers) and **memoize the drawable on `[id, w, h, mode]`**, so typing an unrelated line does not regenerate paths.
+
+Seeding also buys server/client parity for free: `/api/render` produces byte-identical output to the canvas.
+
+Sketch parameters: `roughness: 1.2`, `bowing: 1.5`, `strokeWidth: 1.6`, ink `--ink`, fill `--paper`, `fillStyle: 'solid'`.
+
+**Fonts** — sketch mode needs a handwritten face, self-hosted via `next/font/local`. License must be verified as redistributable before vendoring.
+
+### Edges
+
+React Flow's built-in edges provide none of what is needed here — no control-point handles, no self-loops, no rough stroke — so edges are a custom component:
+
+- **Path** — cubic bezier. Control points come from the override map when present, otherwise derived from the ELK-routed polyline.
+- **Self-loops** (`source === target`) — ELK does not route these usefully; a dedicated arc path leaves and re-enters the node's top edge.
+- **Sketch stroke** — the bezier `d` goes through `rough.generator().path(d, { seed })`, same seeding rule as nodes.
+- **Arrowheads** — hand-drawn as two short Rough.js lines rather than an SVG `marker`, so they match the stroke. `both` draws them at both ends, `none` at neither.
+- **Labels** — via React Flow's `EdgeLabelRenderer` at bezier `t=0.5` with a small normal offset, kept **horizontal** rather than rotated along the path.
+- **Control handles** — hidden until the edge is selected, then two draggable dots writing to the override map.
+
+## Layout (`src/core/layout`)
+
+`elkjs` with `layered`, direction `RIGHT`, hierarchy enabled so `group` blocks are real nested containers.
+
+- **ELK runs in a Web Worker.** Layout of a 60-node graph is tens of milliseconds; on the main thread that is a visible stutter on every keystroke.
+- **Previous positions feed back in as hints**, so adding a node nudges the diagram rather than re-solving from scratch and teleporting everything.
+- Parse runs synchronously per keystroke; layout is debounced ~120ms and skipped entirely for cosmetic diffs.
+
+### The override layer
+
+Presentation state the typed source does not own, keyed by stable IR id:
+
+```ts
+interface NodeOverride { kind: "node"; x: number; y: number; pinned: true }
+interface EdgeOverride { kind: "edge"; cp1: Point; cp2: Point }
+type OverrideMap = Record<string, NodeOverride | EdgeOverride>
+```
+
+Pinned nodes are passed to ELK as position hints with `interactiveLayout: true` so unpinned nodes flow *around* them. ELK treats hints as advisory, so a post-pass **overwrites pinned nodes to their exact coordinates** — "a node I dragged does not move" must hold unconditionally.
+
+Orphaned overrides are garbage-collected on save (`collectGarbage`), so deleting a line and later re-adding it does not resurrect a stale pin. A **Reset layout** action clears the map.
+
+## Interaction model — typed structure, dragged presentation
+
+- **The text owns structure**: which nodes exist, which edges connect them, direction, labels. You cannot drag a node into existence or drag a connection between two nodes — that is what typing is for, and it is the product thesis. React Flow runs `nodesDraggable` **on**, `nodesConnectable` **off**.
+- **The canvas owns presentation**: where things sit, how edges bow.
+
+## UI
+
+```
+┌──────────────────────────┬──────────────────────────────────────┐
+│  EDITOR (left)           │  CANVAS (right)   [ Sketch │ Clean ] │
+│                          │                                      │
+│  title "Auth Service"    │      Authentication Service          │
+│  user -> login-page      │                                      │
+│  login-page -"POST"-> api│        ○       ╭~~~~~~~~~╮           │
+│  api -"verify"-> api     │       /|\  ──► ╎ Auth API ╎ ⟲        │
+│  api <> user-db          │       / \      ╰~~~~~~~~~╯           │
+│                          │       User          │                │
+│  ▸ autocomplete: dat…    │                     ▼                │
+│  ▸ inline diagnostics    │                ⌒⌒⌒⌒⌒⌒⌒⌒               │
+│                          │                ╎ User DB ╎           │
+└──────────────────────────┴──────────────────────────────────────┘
+        ▲ draggable divider          dotted grid · pan · zoom · drag
+```
+
+Left: CodeMirror 6 with a custom TypeSketch language mode — arrow and keyword highlighting, inline diagnostic underlines, autocomplete over the alias table (`dat` → `database`). Right: React Flow with a dotted-grid background, zoom control and the Sketch/Clean toggle.
+
+**Chrome is shadcn/ui + Tailwind**, deliberately small: `Resizable` for the divider, `ToggleGroup` for Sketch/Clean, plus `Button`, `DropdownMenu`, `Dialog`, `Tooltip`, `Sonner`. Everything *inside* the two panes is custom.
+
+Clean chrome around a hand-drawn canvas is intentional — the contrast is what makes the sketch read as *content*. Chrome that was also wobbly would read as a broken stylesheet.
+
+The panes are **bidirectionally linked by node ID**: cursor on a line highlights its node, selecting a node scrolls the editor to its declaring line. Cheap once IDs are stable, and what makes a large diagram navigable.
+
+## Backend
+
+Because the source text is authoritative, the server does almost nothing interesting. That is the point, and it is why this scales: parsing, layout and rendering all happen on the user's machine.
+
+- Next.js route handlers, MongoDB via Mongoose, Auth.js.
+- `POST /api/render` takes source text plus an override map, runs the identical core pipeline, returns SVG or PNG.
+
+```js
+documents       { _id, teamId, title, source, overrides, renderMode, updatedAt }
+versions        { _id, documentId, source, overrides, authorId, createdAt }
+                  // append-only; index { documentId, createdAt: -1 }
+teams           { _id, name, memberIds }
+registryAliases { _id, teamId, alias, archetype }
+                  // UNIQUE compound index { teamId, alias }
+```
+
+Two Mongo-specific notes, since it will not enforce for free what a relational store would:
+
+1. `{ teamId, alias }` **must** carry a unique index, or a team can define the same alias twice and resolution becomes non-deterministic — precisely the bug the registry-only design exists to prevent.
+2. Saving writes both `documents` and `versions`; wrap that in a transaction (needs a replica set, which Atlas provides by default) so history cannot diverge from current state.
+
+`overrides` is where Mongo's schemalessness genuinely pays: an open-ended map keyed by user-defined node IDs, stored as-is with no migration.
+
+## Scalability
+
+- Next.js is stateless → scale horizontally behind a load balancer.
+- MongoDB is the only stateful component; the workload is small documents fetched by ID.
+- Redis caches rendered exports keyed by a hash of source text — the same diagram renders once, ever.
+- Server-side rendering is the one CPU-bound path. If `/api/render` gets hot, move it to a queue-backed worker pool; nothing else changes, because it is already a pure function of its input.
+
+## Designed-in v2 seams
+
+| v2 feature | Seam | Impact on v1 |
+|---|---|---|
+| Voice input | speech → text, upstream of the parser | none |
+| LLM shape inference | second `ShapeResolver` in the chain | none |
+| Real-time collaboration | source text becomes a Yjs `Y.Text` | editor only |
+| Sequence / ER diagrams | second `LayoutStrategy` + parser mode | additive |
+| VS Code extension | reuses `lang` + `layout` + `export` verbatim | none |
+
+## Build phases
+
+- **P0 — Skeleton.** ✅ Next.js app, Tailwind + shadcn wiring, `src/core` boundaries with the lint zone, Vitest, IR/registry/override contracts.
+- **P1 — The core loop, sketched.** Grammar, IR with stable IDs, ~30 archetypes, both renderers, custom edges, ELK in a worker, split-pane shell. *Milestone: `user -> database` draws a connected stick figure and cylinder in sketch style; `<>` adds a second arrowhead; toggling to Clean redraws crisply with no layout change.*
+- **P2 — Full DSL.** Groups, aliases, `style`, hierarchical layout, ~120 archetypes, editor autocomplete and diagnostics, cursor ↔ node linking.
+- **P2.5 — Manual layout.** Node dragging, pinned-node handling, edge control points, orphan GC, Reset layout. Before persistence, so the override shape is settled first.
+- **P3 — Persistence.** Mongoose models and indexes, Auth.js, CRUD, version history, team aliases.
+- **P4 — Export and embed.** Render endpoint, SVG/PNG/JSON, share links, README embeds.
+- **P5 — Polish.** Layout stability tuning, shortcuts, templates, onboarding that teaches syntax by example.
+
+## Verification
+
+| Scope | What it proves |
+|---|---|
+| `lang` | Golden-file AST tests, including partial input (`user -> `, unclosed `group`) producing diagnostics rather than throwing |
+| `ir` | Property test: prepending a line leaves every pre-existing node ID unchanged |
+| `registry` | Every alias resolves to exactly one archetype; no duplicates |
+| `shapes` | **Anti-shimmer:** rendering the same node twice yields byte-identical path data |
+| `layout` | Pinned nodes emerge at exactly their given coordinates; orphan GC drops dead overrides |
+| persistence | `documents` + `versions` write in one transaction; unique alias index rejects duplicates |
+| isomorphism | Same fixtures through the client pipeline and `/api/render` produce identical geometry |
+
+**Component/pipeline tests (Vitest + Testing Library)** cover the behavioural guarantees one level below the browser — including that a pinned node's coordinates are *exactly* unchanged after ten more lines of typing, and that Sketch↔Clean is position-identical.
+
+**Deferred to Playwright:** real pointer-drag mechanics, actual page reload, cross-browser stroke rendering. Worth adding once the interaction model stops changing.
+
+**Performance.** 200-node document: parse under 5ms, layout under 300ms off-thread, no dropped frames while typing. Rough.js generation must appear only on mount and resize in a React profile, never per keystroke.
+
+## Toolchain notes
+
+Versions are pinned deliberately, not optimistically — several `latest` tags are ahead of what the ecosystem supports:
+
+- **TypeScript 6.0.3**, not 7.0.2. TS 7 (the native port) is rejected outright by `typescript-eslint`, and Next cannot use its compiler API.
+- **ESLint 9.39.5**, not 10.8.0. `eslint-config-next` claims `>=9` but pulls `eslint-plugin-react`, which uses a context API ESLint 10 removed.
+- **Chevrotain 12.0.0**, not 13.2.0. The entire 13.x line was under a week old; 12.0.0 has months of soak. The parser is the foundation of the app — not the place to be first.
+
+Node ≥22 (developed on 24.16), pnpm 11.

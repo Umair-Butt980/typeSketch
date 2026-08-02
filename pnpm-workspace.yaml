@@ -1,0 +1,5 @@
+allowBuilds:
+  # Next.js image optimisation.
+  sharp: true
+  # Native resolver used by eslint-plugin-import-x.
+  unrs-resolver: true
