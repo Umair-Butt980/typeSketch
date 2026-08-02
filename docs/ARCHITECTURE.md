@@ -60,35 +60,38 @@ src/
 ├── components/              React UI; shadcn primitives land in components/ui
 ├── lib/                     app-level helpers (cn, client utils)
 └── core/                    the isomorphic core — no DOM, no React, no Node
-    ├── lang/                lexer, parser, AST, diagnostics
-    ├── ir/                  graph IR types, builder, differ
+    ├── diagnostics.ts       Diagnostic — shared by lang and ir
+    ├── lang/                tokens.ts · ast.ts · parser.ts
+    ├── ir/                  types.ts · builder.ts · diff.ts
     ├── registry/            archetypes as geometry + alias table
     ├── layout/              ELK adapter, override map, layout worker
     ├── shapes/              React node/edge components  ← the React boundary
     └── export/              SVG / PNG / JSON emitters
 ```
 
+`Diagnostic` sits at the core root rather than inside either package: the parser
+produces diagnostics and `IRGraph` carries them, so putting the type in `ir`
+would force `lang` to depend on `ir` for no reason.
+
 **`src/core/{lang,ir,registry,layout,export}` must stay isomorphic** — no DOM, no React, no Node built-ins — so the browser, the worker and the server run identical code. This is enforced by a `no-restricted-imports` zone in `eslint.config.mjs`, not by convention. `src/core/shapes` is the deliberate exception: it is where React enters.
 
 ## The grammar (`src/core/lang`)
 
-Built with Chevrotain. **Error-tolerant, statement-scoped parsing is non-negotiable**: while typing `user -> `, that line is incomplete, and a parser that throws would blank the canvas mid-keystroke. Each statement parses independently — a failure yields a diagnostic and is skipped, and every other statement still renders.
+Built with Chevrotain. The full syntax reference is [`LANGUAGE.md`](./LANGUAGE.md); this section covers only the implementation decisions.
 
-```
-title "Authentication Service"      canvas title
-user -> api                         forward edge
-api <- worker                       reverse (normalised: swap source/target)
-api <> database                     bidirectional — arrowheads both ends
-api -- cdn                          undirected
-api -"publishes"-> queue            edge label
-api -"verify password hash"-> api   self-loop
-cache:redis                         explicit archetype override
-user -> api -> database             chaining, expands to two edges
-gateway as gw                       alias
-group backend { api -> database }   container, nests, participates in layout
-user -> backend.api                 qualified reference into a group
-style api { color: blue }           per-node style override
-```
+**Error-tolerant, statement-scoped parsing is non-negotiable.** While typing `user -> `, that line is incomplete, and a parser that throws would blank the canvas mid-keystroke.
+
+The implementation is deliberately blunt about this: `parse()` splits the document on newlines and lexes *and parses each line in isolation*. A line that fails produces a `Diagnostic` and is skipped; every other line still builds. There is no document-level parse to fail. The cost is that statements cannot span lines — which `group { ... }` will need in P2, and is the one place this design will have to bend.
+
+Implemented in v1: `title`, the four connectors (`->`, `<-`, `<>`, `--`), chaining, edge labels, explicit archetype (`cache:redis`), self-loops, and `//` comments. Groups, aliases and `style` blocks are P2.
+
+Three lexer details that are load-bearing:
+
+- **Token order.** Multi-character operators must precede the single characters they start with, or `--` lexes as two `-` and `<>` never matches at all.
+- **Identifiers allow interior dashes** (`login-page`) via `[A-Za-z_][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)*` — a dash must be followed by a word character. That is precisely what lets `user->api` lex correctly without spaces: the `-` of `->` cannot be absorbed into the identifier.
+- **`title` carries `longer_alt: Identifier`**, so `titlebar` stays one identifier rather than becoming the keyword plus `bar`.
+
+Column ranges come from `startOffset + image.length`, not from `endOffset`. Chevrotain's `positionTracking: "onlyOffset"` records start offsets only; the alternative, `"full"`, adds line/column tracking we do not need (each line is lexed separately, so offsets *are* columns) plus a spurious LINE_BREAKS warning.
 
 `<>` is **one** edge with `direction: 'both'`, never two opposing edges — two edges route as two separate splines and look visibly wrong.
 
@@ -100,9 +103,27 @@ Consequence: inserting a line at the top does not renumber nodes, so the differ 
 
 It is load-bearing three times over — it is also what keeps a dragged node's pin attached to the right node, and what keeps each shape's hand-drawn wobble identical across renders.
 
-Edge IDs are `${source}->${target}#${ordinal}`, where the ordinal disambiguates parallel edges.
+Concretely: `nodeId(name)` is `name.trim().toLowerCase()` and nothing else. Display text is a separate concern — `humanize()` turns `login-page` into `Login Page`, uppercasing a small acronym list so `user-db` reads `User DB` rather than `User Db`.
 
-The differ classifies each change as *cosmetic* (label or style only) or *topological* (nodes/edges added or removed). Only topological changes trigger a relayout.
+Edge IDs are `${source}->${target}#${ordinal}`, where the ordinal disambiguates parallel edges. `<-` is normalised away at build time by swapping the endpoints, so nothing downstream ever has to think about which way the user typed it.
+
+**Resolution is injected, not imported.** `buildIR(parsed, resolver)` takes a `ShapeResolver`, which is what makes the builder testable before the registry exists and what makes the v2 LLM tier a second implementation rather than a rewrite.
+
+### What counts as a relayout
+
+The differ classifies every change, and only `topological` runs ELK.
+
+| Change | Kind | Why |
+|---|---|---|
+| Node added or removed | topological | graph shape changed |
+| Edge added, removed or rewired | topological | routing changed |
+| Archetype changed | topological | a different shape has a different footprint |
+| **Direction (`->` → `<>`)** | **cosmetic** | adds an arrowhead to an existing spline — nodes must not move |
+| Node or edge label | cosmetic | painted detail |
+| Title, style | cosmetic | painted detail |
+| Statement moved to another line | none | invisible to the canvas |
+
+Direction being cosmetic is a guarantee, not an optimisation: `user -> api` becoming `user <> api` must leave every node exactly where it was. It has a test.
 
 ## Archetypes are geometry, not markup (`src/core/registry`)
 
@@ -261,7 +282,9 @@ Two Mongo-specific notes, since it will not enforce for free what a relational s
 ## Build phases
 
 - **P0 — Skeleton.** ✅ Next.js app, Tailwind + shadcn wiring, `src/core` boundaries with the lint zone, Vitest, IR/registry/override contracts.
-- **P1 — The core loop, sketched.** Grammar, IR with stable IDs, ~30 archetypes, both renderers, custom edges, ELK in a worker, split-pane shell. *Milestone: `user -> database` draws a connected stick figure and cylinder in sketch style; `<>` adds a second arrowhead; toggling to Clean redraws crisply with no layout change.*
+- **P1a — Grammar and IR.** ✅ Chevrotain lexer and parser with per-line error tolerance, AST, IR builder with stable ids, differ. 56 tests including the ID-stability property test.
+- **P1b — Registry and renderers.** ~30 archetypes as geometry, `SketchRenderer` and `CleanRenderer`, seeded Rough.js, the anti-shimmer test.
+- **P1c — Layout and canvas.** ELK in a worker, custom edge component, split-pane shell. *Milestone: `user -> database` draws a connected stick figure and cylinder in sketch style; `<>` adds a second arrowhead; toggling to Clean redraws crisply with no layout change.*
 - **P2 — Full DSL.** Groups, aliases, `style`, hierarchical layout, ~120 archetypes, editor autocomplete and diagnostics, cursor ↔ node linking.
 - **P2.5 — Manual layout.** Node dragging, pinned-node handling, edge control points, orphan GC, Reset layout. Before persistence, so the override shape is settled first.
 - **P3 — Persistence.** Mongoose models and indexes, Auth.js, CRUD, version history, team aliases.

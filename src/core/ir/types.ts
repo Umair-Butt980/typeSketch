@@ -5,6 +5,10 @@
  * Layout consumes this. Rendering consumes layout. Neither can reach backwards.
  */
 
+import type { Diagnostic } from "@/core/diagnostics";
+
+export type { Diagnostic, DiagnosticSeverity } from "@/core/diagnostics";
+
 export type Direction = "forward" | "both" | "none";
 
 export interface StyleOverride {
@@ -43,17 +47,6 @@ export interface IRGroup {
   label: string;
   parent?: string;
   line: number;
-}
-
-export type DiagnosticSeverity = "error" | "warning";
-
-export interface Diagnostic {
-  severity: DiagnosticSeverity;
-  message: string;
-  line: number;
-  /** Column range within the line, 0-indexed, end-exclusive. */
-  from: number;
-  to: number;
 }
 
 export interface IRGraph {

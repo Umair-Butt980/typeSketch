@@ -32,3 +32,9 @@ export interface Archetype {
 export interface ShapeResolver {
   resolve(label: string): Archetype | null;
 }
+
+/**
+ * What an unrecognised word renders as. Unknown vocabulary must never be an
+ * error and must never block typing — it degrades to a labelled rectangle.
+ */
+export const FALLBACK_ARCHETYPE = "box";
