@@ -9,6 +9,14 @@ export {
 } from "./paths";
 export { seedFor, seedForPart } from "./seed";
 export {
+  arrowheadPaths,
+  arrowheadsFor,
+  edgeGeometry,
+  selfLoopGeometry,
+  type EdgeGeometry,
+  type Point,
+} from "./edges";
+export {
   estimateTextWidth,
   labelPosition,
   LABEL_BELOW_GAP,

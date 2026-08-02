@@ -18,16 +18,16 @@ around afterwards — but you never have to draw them.
 
 ## Status
 
-Pre-alpha, built in phases. The parser and graph model are done; rendering and
-the canvas are next.
+Pre-alpha, built in phases. **It runs** — `pnpm dev` gives you a split pane you
+can type a diagram into.
 
 | Phase | |
 |---|---|
 | P0 — Skeleton | ✅ |
 | P1a — Grammar and IR | ✅ |
 | P1b — Registry and renderers | ✅ |
-| P1c — Layout and canvas | next |
-| P2 — Full DSL (groups, aliases, styles) | |
+| P1c — Layout and canvas | ✅ |
+| P2 — Full DSL (groups, aliases, styles) | next |
 | P2.5 — Manual layout | |
 | P3 — Persistence | |
 | P4 — Export and embed | |
@@ -43,7 +43,7 @@ Requires Node ≥22 and pnpm.
 
 ```sh
 pnpm install
-pnpm dev          # http://localhost:3000
+pnpm dev          # http://localhost:3000 — the editor
                   # /gallery renders all 30 archetypes in both modes
 pnpm test         # vitest
 pnpm typecheck

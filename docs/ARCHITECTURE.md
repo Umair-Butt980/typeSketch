@@ -211,9 +211,18 @@ React Flow's built-in edges provide none of what is needed here — no control-p
 
 `elkjs` with `layered`, direction `RIGHT`, hierarchy enabled so `group` blocks are real nested containers.
 
-- **ELK runs in a Web Worker.** Layout of a 60-node graph is tens of milliseconds; on the main thread that is a visible stutter on every keystroke.
+- **ELK runs in a Web Worker.** Layout of a 60-node graph is tens of milliseconds; on the main thread that is a visible stutter on every keystroke. The worker is created lazily, so ELK — a large bundle — stays out of the initial page chunk.
 - **Previous positions feed back in as hints**, so adding a node nudges the diagram rather than re-solving from scratch and teleporting everything.
 - Parse runs synchronously per keystroke; layout is debounced ~120ms and skipped entirely for cosmetic diffs.
+- **Self-loops never reach ELK.** It routes them poorly, and they carry no layout information anyway: a node's loop is drawn from that node's own box, so it cannot influence where anything sits.
+
+**Layout degrades rather than disappearing.** `createLayoutClient` falls back to main-thread layout in three cases: no `Worker` at all (server render, jsdom), a bundler that cannot construct one, and a worker that dies at runtime — where in-flight requests are retried on the main thread rather than rejected. The failure this avoids is the worst one available: a permanently empty canvas with no error.
+
+### How positions survive typing
+
+The canvas holds node positions in React Flow's own state, and the effect that resets them is keyed on the **layout result**, not on the graph. A cosmetic edit produces no new layout, so nothing resets and a node stays exactly where it was put. A second effect updates labels, archetypes and render mode in place without touching position.
+
+That is what makes the Sketch/Clean toggle and label edits free, and it is the same mechanism P2.5 extends to persist drags.
 
 ### The override layer
 
@@ -306,7 +315,8 @@ Two Mongo-specific notes, since it will not enforce for free what a relational s
 - **P0 — Skeleton.** ✅ Next.js app, Tailwind + shadcn wiring, `src/core` boundaries with the lint zone, Vitest, IR/registry/override contracts.
 - **P1a — Grammar and IR.** ✅ Chevrotain lexer and parser with per-line error tolerance, AST, IR builder with stable ids, differ. 56 tests including the ID-stability property test.
 - **P1b — Registry and renderers.** ✅ 30 archetypes as geometry, both render modes over seeded Rough.js, isomorphic sizing, `NodeShape`, and `/gallery`. 112 tests including the anti-shimmer guarantee.
-- **P1c — Layout and canvas.** ELK in a worker, custom edge component, split-pane shell. *Milestone: `user -> database` draws a connected stick figure and cylinder in sketch style; `<>` adds a second arrowhead; toggling to Clean redraws crisply with no layout change.*
+- **P1c — Layout and canvas.** ✅ ELK in a worker with main-thread fallback, custom `SketchEdge` (bezier, self-loop arcs, hand-drawn arrowheads, labels), React Flow canvas, split-pane shell with CodeMirror and a diagnostics strip. 157 tests.
+  *Known gaps, deliberately deferred:* dragging works but is not persisted (P2.5), the editor has no TypeSketch language mode so diagnostics sit in a strip rather than underlining inline (P2), and edge control points are not yet draggable (P2.5).
 - **P2 — Full DSL.** Groups, aliases, `style`, hierarchical layout, ~120 archetypes, editor autocomplete and diagnostics, cursor ↔ node linking.
 - **P2.5 — Manual layout.** Node dragging, pinned-node handling, edge control points, orphan GC, Reset layout. Before persistence, so the override shape is settled first.
 - **P3 — Persistence.** Mongoose models and indexes, Auth.js, CRUD, version history, team aliases.
