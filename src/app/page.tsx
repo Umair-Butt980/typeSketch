@@ -205,7 +205,7 @@ export default function EditorPage() {
         <ResizablePanel defaultSize="36%" minSize="20%">
           <div className="flex h-full flex-col">
             <div className="min-h-0 flex-1">
-              <Editor value={source} onChange={edit} />
+              <Editor value={source} onChange={edit} graph={graph} />
             </div>
 
             {/*

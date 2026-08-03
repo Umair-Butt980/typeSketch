@@ -199,6 +199,30 @@ auth-api -"set JWT cookie"-> login-page
 login-page -"redirect to dashboard"-> user
 ```
 
+## Autocomplete
+
+The editor suggests as you type, from three places:
+
+- **Nodes already in this diagram**, first — if you wrote `auth-api` on line 3,
+  typing `auth` on line 9 offers it back.
+- **Connectors**, once you have named a node: `->`, `<>`, `<-`, `--`, and the
+  labelled form, which drops the caret between the quotes for you.
+- **Shape names**, all 183 of them, each showing what it resolves to — so
+  `redis` visibly means `cache`.
+
+Two forms, deliberately:
+
+| | |
+|---|---|
+| **Popup** | A filtered list. Arrow keys to move, Enter to accept, Escape to dismiss. This is how you find out a word exists. |
+| **Ghost text** | Dim grey text completing the word inline. **Tab** accepts. This is how you go fast once you know it. |
+
+Ghost text only ever *extends* what you typed — it will never rewrite your own
+characters, so Tab always means the same thing.
+
+**Nothing is suggested inside a `"label"` or after `//`.** You are writing prose
+there, and shape names would only get in the way.
+
 ## Error handling
 
 **Every line parses on its own.** A broken line produces a diagnostic and is

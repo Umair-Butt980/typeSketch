@@ -61,8 +61,9 @@ src/
 ├── lib/                     app-level helpers (cn, client utils)
 └── core/                    the isomorphic core — no DOM, no React, no Node
     ├── diagnostics.ts       Diagnostic — shared by lang and ir
-    ├── lang/                tokens.ts · ast.ts · parser.ts
+    ├── lang/                tokens.ts · ast.ts · parser.ts · classify.ts
     ├── ir/                  types.ts · builder.ts · diff.ts
+    ├── complete/            context.ts · engine.ts
     ├── registry/            geometry.ts · archetypes.ts · resolver.ts
     ├── render/              seed.ts · paths.ts · measure.ts
     ├── layout/              ELK adapter, override map
@@ -205,6 +206,57 @@ React Flow's built-in edges provide none of what is needed here — no control-p
 - **Arrowheads** — hand-drawn as two short Rough.js lines rather than an SVG `marker`, so they match the stroke. `both` draws them at both ends, `none` at neither.
 - **Labels** — via React Flow's `EdgeLabelRenderer` at bezier `t=0.5` with a small normal offset, kept **horizontal** rather than rotated along the path.
 - **Control handles** — hidden until the edge is selected, then two draggable dots writing to the override map.
+
+## Autocomplete (`src/core/complete`)
+
+Suggestions are **deterministic** — ranked from the document, the shape registry
+and the grammar. No model, no API key, no latency. The same reasoning as the
+registry, and it applies more strongly here: completions fire on every keystroke
+against a canvas that updates in under a millisecond. Measured at 0.023ms per
+call on a 200-node document.
+
+**It cannot live in `src/core/lang`.** It needs node names from the current
+document, so it depends on `ir` — and `ir` already imports `lang`. That would be
+a directory-level cycle, so it is its own module, depended on by nothing.
+
+Ranking, highest first: nodes already in the document → connectors (only in
+connector position) → the 183-word registry vocabulary → snippets. Within a
+rank: prefix matches before substring matches, each alphabetical. The
+alphabetical tiebreak is not cosmetic — without a total order the list can
+reshuffle between keystrokes, and a popup whose first entry moves under your
+fingers is worse than no popup.
+
+**`src/core/lang/classify.ts` is the single lexical truth**, shared by
+completion and highlighting and **tested for agreement with the Chevrotain
+lexer**. Hand-written editor modes classically drift from the real grammar until
+the colours start lying about what the parser sees; one tested classifier is what
+prevents that. It diverges deliberately in exactly one way: an unterminated
+string is classified rather than rejected, because `-"enter cred` is the normal
+state of a line someone is typing.
+
+### Two rules that make it tolerable rather than irritating
+
+**Nothing is suggested inside a label or a comment.** Offering `elasticsearch`
+in the middle of `-"enter credentials"` is worse than offering nothing. The
+context scanner returns `suppressed` there, and it has tests.
+
+**Ghost text only ever extends what was typed.** If the top suggestion would
+rewrite any typed character, no ghost appears. A Tab key that sometimes inserts
+and sometimes rewrites is unpredictable, and unpredictability is the one thing an
+accept key cannot afford.
+
+The engine sits behind a `CompletionSource` interface, so a model-backed tier is
+a second implementation in a chain rather than a rewrite — the same seam as
+`ShapeResolver`.
+
+**The word being typed is excluded from its own suggestions.** The graph is
+derived from source that includes the half-typed line, so `au` exists as a node
+while you are typing it; `CompletionRequest.lineIndex` is required, not optional,
+so this cannot be forgotten.
+
+The editor is composed explicitly rather than with `basicSetup`, which bundles
+its own `autocompletion()` and highlight style — both would compete with the
+TypeSketch ones.
 
 ## Layout (`src/core/layout`)
 

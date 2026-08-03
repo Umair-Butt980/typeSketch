@@ -36,6 +36,18 @@
    * is the only difference in text between the two modes — size and position
    * are identical, so toggling never moves anything.
    */
+  /*
+   * Editor syntax colours. Deliberately quiet: the diagram is the subject, and
+   * a rainbow editor next to a hand-drawn canvas would compete with it. Arrows
+   * carry the most weight because they are the load-bearing punctuation.
+   */
+  --syn-keyword: oklch(0.48 0.16 275);
+  --syn-arrow: oklch(0.5 0.15 235);
+  --syn-string: oklch(0.46 0.12 155);
+  --syn-comment: oklch(0.63 0.02 285);
+  --syn-invalid: oklch(0.55 0.2 25);
+  --syn-ghost: oklch(0.66 0.02 285);
+
   --font-hand: "Architects Daughter", "Bradley Hand", "Segoe Print", cursive;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
@@ -67,6 +79,14 @@
   --canvas-dot: oklch(0.3 0.006 285);
   --ink: oklch(0.93 0.004 285);
   --paper: oklch(0.24 0.006 285);
+
+  /* Re-derived rather than inverted: lightened and desaturated for a dark ground. */
+  --syn-keyword: oklch(0.76 0.12 275);
+  --syn-arrow: oklch(0.77 0.11 235);
+  --syn-string: oklch(0.76 0.11 155);
+  --syn-comment: oklch(0.52 0.02 285);
+  --syn-invalid: oklch(0.7 0.16 25);
+  --syn-ghost: oklch(0.5 0.02 285);
 }
 
 @theme inline {

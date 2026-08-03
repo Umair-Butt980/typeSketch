@@ -13,6 +13,7 @@ const ISOMORPHIC_CORE = [
   "src/core/lang/**/*.ts",
   "src/core/ir/**/*.ts",
   "src/core/registry/**/*.ts",
+  "src/core/complete/**/*.ts",
   "src/core/layout/**/*.ts",
   "src/core/render/**/*.ts",
   "src/core/export/**/*.ts",
