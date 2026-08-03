@@ -22,6 +22,7 @@ export type TokenKind =
   | "arrow"
   | "dash"
   | "colon"
+  | "color"
   | "comment"
   | "whitespace"
   | "unknown";
@@ -50,6 +51,7 @@ const RULES: { re: RegExp; kind: TokenKind }[] = [
   { re: /--/y, kind: "arrow" },
   { re: /-/y, kind: "dash" },
   { re: /:/y, kind: "colon" },
+  { re: /#[A-Za-z][A-Za-z0-9-]*/y, kind: "color" },
   /**
    * Identifiers may contain interior dashes, but a dash must be followed by a
    * word character — which is exactly what lets `user->api` split correctly

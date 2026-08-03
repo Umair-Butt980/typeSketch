@@ -48,6 +48,46 @@ describe("parse — statements", () => {
     });
   });
 
+  it("reads an inline colour", () => {
+    const { statements, diagnostics } = parse("api #blue");
+    expect(diagnostics).toEqual([]);
+    expect(statements[0]).toMatchObject({
+      kind: "chain",
+      head: { name: "api", color: "blue" },
+    });
+  });
+
+  it("reads a colour on the source and on the target", () => {
+    const { statements } = parse("auth-api #blue -> user-db #green");
+    expect(statements[0]).toMatchObject({
+      head: { name: "auth-api", color: "blue" },
+      links: [{ target: { name: "user-db", color: "green" } }],
+    });
+  });
+
+  it("reads a colour alongside an archetype override", () => {
+    const { statements } = parse("sessions:redis #amber");
+    expect(statements[0]).toMatchObject({
+      head: { name: "sessions", archetype: "redis", color: "amber" },
+    });
+  });
+
+  it("reads a colour mid-chain", () => {
+    const { statements } = parse("a -> b #teal -> c");
+    const statement = statements[0];
+    if (statement?.kind !== "chain") throw new Error("expected a chain");
+    expect(statement.links[0]?.target).toMatchObject({ name: "b", color: "teal" });
+    expect(statement.links[1]?.target.color).toBeUndefined();
+  });
+
+  it("leaves a # inside a label alone", () => {
+    const { statements, diagnostics } = parse('a -"POST #1"-> b');
+    expect(diagnostics).toEqual([]);
+    expect(statements[0]).toMatchObject({
+      links: [{ label: "POST #1", target: { name: "b" } }],
+    });
+  });
+
   it("reads a chain of three", () => {
     const { statements } = parse("user -> api -> database");
     const statement = statements[0];

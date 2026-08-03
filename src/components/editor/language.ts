@@ -29,6 +29,7 @@ const STYLES: Record<TokenKind, string | null> = {
   arrow: "operator",
   dash: "punctuation",
   colon: "punctuation",
+  color: "atom",
   identifier: "variableName",
   unknown: "invalid",
   whitespace: null,
@@ -75,6 +76,7 @@ const highlightStyle = HighlightStyle.define([
   { tag: tags.comment, color: "var(--syn-comment)", fontStyle: "italic" },
   { tag: tags.punctuation, color: "var(--syn-arrow)" },
   { tag: tags.variableName, color: "var(--foreground)" },
+  { tag: tags.atom, color: "var(--syn-color-tag)", fontWeight: "600" },
   { tag: tags.invalid, color: "var(--syn-invalid)" },
 ]);
 

@@ -6,6 +6,7 @@ export interface DiagramNodeData extends Record<string, unknown> {
   label: string;
   archetype: string;
   mode: RenderMode;
+  color?: string | undefined;
 }
 
 export type DiagramNodeType = Node<DiagramNodeData, "diagram">;
@@ -33,6 +34,7 @@ export function DiagramNode({ id, data, selected }: NodeProps<DiagramNodeType>) 
           label={data.label}
           archetype={data.archetype}
           mode={data.mode}
+          color={data.color}
         />
       </div>
       <Handle

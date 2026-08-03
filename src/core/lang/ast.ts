@@ -8,6 +8,8 @@ export interface NodeRef {
   name: string;
   /** Explicit archetype from `cache:redis`, overriding registry lookup. */
   archetype?: string;
+  /** Inline colour from `api #blue`, without the leading `#`. */
+  color?: string;
   /** Column range of the reference within its line, for editor linking. */
   from: number;
   to: number;

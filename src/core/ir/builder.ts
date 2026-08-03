@@ -1,5 +1,6 @@
 import type { Diagnostic } from "@/core/diagnostics";
 import type { ChainLink, NodeRef, ParseResult } from "@/core/lang";
+import { colorByName } from "@/core/registry/palette";
 import { FALLBACK_ARCHETYPE, type ShapeResolver } from "@/core/registry/types";
 import type { Direction, IREdge, IRGraph, IRNode } from "./types";
 
@@ -98,15 +99,37 @@ export function buildIR(
     return undefined;
   }
 
+  /**
+   * `api #blue`. Unknown colours warn and leave the node untinted rather than
+   * failing, the same way an unrecognised shape word degrades to a plain box.
+   */
+  function explicitColor(ref: NodeRef, line: number): string | undefined {
+    if (!ref.color) return undefined;
+
+    const hit = colorByName(ref.color);
+    if (hit) return hit.name;
+
+    diagnostics.push({
+      severity: "warning",
+      message: `Unknown colour \`${ref.color}\`; drawing \`${ref.name}\` untinted.`,
+      line,
+      from: ref.from,
+      to: ref.to,
+    });
+    return undefined;
+  }
+
   function declare(ref: NodeRef, line: number): string {
     const id = nodeId(ref.name);
     const explicit = explicitArchetype(ref, line);
+    const color = explicitColor(ref, line);
     const existing = nodes.get(id);
 
     if (!existing) {
       const archetype =
         explicit ?? resolver.resolve(ref.name)?.name ?? FALLBACK_ARCHETYPE;
-      nodes.set(id, { id, label: humanize(ref.name), archetype, line });
+      const node: IRNode = { id, label: humanize(ref.name), archetype, line };
+      nodes.set(id, color === undefined ? node : { ...node, style: { color } });
       return id;
     }
 
@@ -121,6 +144,20 @@ export function buildIR(
         to: ref.to,
       });
     }
+
+    /**
+     * Colour is **last-wins**, unlike the archetype above.
+     *
+     * A contradicted archetype is almost certainly a mistake — one node cannot
+     * be two shapes. A restated colour is almost certainly intentional: writing
+     * `billing-api #red` further down is how you recolour something without
+     * hunting for where you first named it. First-wins would make that
+     * statement silently do nothing.
+     */
+    if (color !== undefined) {
+      existing.style = { ...existing.style, color };
+    }
+
     return id;
   }
 

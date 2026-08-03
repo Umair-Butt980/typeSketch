@@ -81,6 +81,13 @@ arrowhead to an existing spline and must not move any node. Archetype change *is
 topological, because a different shape has a different footprint. Any new IR
 field must be classified deliberately in `src/core/ir/diff.ts`.
 
+**Colour is last-wins; archetype is first-wins.** Not an inconsistency: one node
+cannot be two shapes, so a contradicted archetype is a mistake worth warning
+about, whereas restating a colour is how you recolour something. The palette in
+`src/core/registry/palette.ts` is the single source of truth — `paletteCss()`
+generates the CSS variables so they cannot drift from the values export resolves
+to literals. An exported SVG must never contain a `var()`.
+
 **Archetypes declare geometry, not markup** (`src/core/registry/types.ts`). A
 cylinder is "two arcs and two sides", not an SVG string and not a component.
 That split is what lets the sketch and clean renderers share one definition.

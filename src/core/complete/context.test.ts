@@ -65,6 +65,38 @@ describe("contextAt", () => {
   });
 });
 
+describe("colour", () => {
+  it("offers the palette the moment # is typed", () => {
+    expect(at("api #|")).toMatchObject({ kind: "color", prefix: "" });
+  });
+
+  it("narrows as the colour is typed", () => {
+    expect(at("api #bl|")).toMatchObject({ kind: "color", prefix: "bl" });
+  });
+
+  it("excludes the # from the range being replaced", () => {
+    const context = at("api #bl|");
+    if (context.kind !== "color") throw new Error("expected a colour context");
+    expect(context.from).toBe(5);
+  });
+
+  it("works on a target as well as a source", () => {
+    expect(at("user -> api #gr|")).toMatchObject({ kind: "color", prefix: "gr" });
+  });
+
+  it("works after an archetype override", () => {
+    expect(at("sessions:redis #am|")).toMatchObject({ kind: "color", prefix: "am" });
+  });
+
+  it("wants a connector once the colour is finished", () => {
+    expect(at("api #blue |")).toMatchObject({ kind: "connector" });
+  });
+
+  it("does not mistake a # inside a label for a colour", () => {
+    expect(at('a -"POST #1|')).toEqual({ kind: "suppressed" });
+  });
+});
+
 /**
  * The obstructive cases. Offering shape names while someone writes prose is
  * worse than offering nothing, so these are the tests that matter most.

@@ -1,8 +1,8 @@
 import type { IRGraph } from "@/core/ir/types";
-import { archetypeByName, vocabulary } from "@/core/registry";
+import { archetypeByName, paletteNames, vocabulary } from "@/core/registry";
 import { contextAt, type CursorContext } from "./context";
 
-export type SuggestionKind = "node" | "connector" | "shape" | "snippet";
+export type SuggestionKind = "node" | "connector" | "shape" | "snippet" | "color";
 
 export interface Suggestion {
   /** What the popup shows. */
@@ -154,6 +154,13 @@ function suggestionsFor(
 
     case "archetype":
       return shapeSuggestions(prefix, new Set());
+
+    case "color":
+      return rank(paletteNames(), prefix).map((name) => ({
+        label: name,
+        insert: name,
+        kind: "color",
+      }));
   }
 }
 

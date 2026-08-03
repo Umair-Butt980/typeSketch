@@ -16,6 +16,8 @@ export type CursorContext =
   | { kind: "target"; prefix: string; from: number }
   /** After `name:` — an explicit shape. */
   | { kind: "archetype"; prefix: string; from: number }
+  /** After `#` — a palette colour. */
+  | { kind: "color"; prefix: string; from: number }
   /** Inside prose or mid-token: offering anything here would obstruct. */
   | { kind: "suppressed" };
 
@@ -35,6 +37,26 @@ export function contextAt(line: string, column: number): CursorContext {
    */
   if (last?.kind === "comment" || last?.kind === "unterminatedString") {
     return SUPPRESSED;
+  }
+
+  /**
+   * `api #bl` — the colour is being typed. Handled before the identifier case
+   * because a colour tag is one token, and its prefix excludes the `#`.
+   */
+  if (last?.kind === "color" && last.to === clamped) {
+    return {
+      kind: "color",
+      prefix: line.slice(last.from + 1, last.to),
+      from: last.from + 1,
+    };
+  }
+
+  /**
+   * A lone `#` is not yet a valid colour tag, so it lexes as unknown — but it is
+   * exactly the moment the user wants the palette offered.
+   */
+  if (last?.kind === "unknown" && last.to === clamped && line[last.from] === "#") {
+    return { kind: "color", prefix: "", from: clamped };
   }
 
   // The word being typed, if the cursor is sitting at the end of one.
@@ -69,7 +91,9 @@ function classifyByPrevious(
     case "arrow":
       return { kind: "target", prefix, from };
 
+    /** `api #blue ` — the node is fully described, so a connector comes next. */
     case "identifier":
+    case "color":
       return { kind: "connector", prefix, from, afterLabel: false };
 
     /**

@@ -166,6 +166,41 @@ Every alias belongs to exactly one archetype, asserted by a test: a word resolvi
 
 The full table is in [`LANGUAGE.md`](./LANGUAGE.md#shapes), and `/gallery` renders all 30 in both modes.
 
+## Colour (`src/core/registry/palette.ts`)
+
+Shape encodes *what a thing is*; colour encodes *which group it belongs to*.
+Written inline as `api #blue`, so the colour rides on the node reference and no
+new statement type was needed — nothing about the line-scoped parser changed.
+
+Nine curated names rather than open hex, for the same reason the shape aliases
+are curated: an arbitrary hex has no dark-theme counterpart and no contrast
+guarantee. **The stroke carries the hue and the fill only hints at it**, so the
+label sitting on top keeps its contrast — there are tests asserting the
+lightness relationship in both themes.
+
+**One source of truth.** The canvas needs CSS variables so a theme switch
+repaints without re-rendering, but hand-writing those in `globals.css` next to
+the TypeScript values would be two lists free to drift. `paletteCss()` generates
+them from `PALETTE`, and the root layout injects it. Export resolves the same
+objects to literals, because a downloaded file has no stylesheet to inherit
+from — an exported SVG never contains a `var()`.
+
+### Colour is last-wins; archetype is first-wins
+
+A contradicted archetype is almost certainly a mistake, so `sessions:redis`
+followed by `sessions:s3` keeps the first and warns. A restated colour is almost
+certainly intentional — writing `billing-api #red` further down is how you
+recolour something without hunting for where you first named it, and first-wins
+would make that statement silently do nothing.
+
+Same-shaped situation, opposite intent, so deliberately different rules. Both are
+documented in `LANGUAGE.md` and both have tests.
+
+Colour is **cosmetic** in the differ, so recolouring repaints without moving
+anything. That fell out of the existing classification rather than needing new
+code, but it has its own test because it is the guarantee that makes recolouring
+feel instant.
+
 ## Rendering (`src/core/shapes`)
 
 Two renderers over one geometry:

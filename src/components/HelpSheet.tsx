@@ -10,7 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ARCHETYPES } from "@/core/registry";
+import { ARCHETYPES, paletteNames } from "@/core/registry";
 
 function Row({ code, children }: { code: string; children: React.ReactNode }) {
   return (
@@ -85,6 +85,35 @@ export function HelpSheet() {
             <Row code="anything-unknown">
               Unrecognised words become a plain box — never an error
             </Row>
+          </Section>
+
+          <Section title="Colour">
+            <p className="text-muted-foreground mb-3 text-[13px]">
+              Shape says what a thing is. Colour says which group it belongs to —
+              useful when two services need telling apart. Add{" "}
+              <code className="font-mono">#colour</code> wherever you mention a
+              node.
+            </p>
+            <Row code="auth-api #blue">Tint a node</Row>
+            <Row code="user -> billing-api #amber">Works on either end</Row>
+            <Row code="billing-api #red">
+              Written later, this recolours — the last one wins
+            </Row>
+
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {paletteNames().map((name) => (
+                <span
+                  key={name}
+                  className="flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px]"
+                  style={{
+                    background: `var(--tint-${name}-fill)`,
+                    borderColor: `var(--tint-${name}-stroke)`,
+                  }}
+                >
+                  #{name}
+                </span>
+              ))}
+            </div>
           </Section>
 
           <Section title="Notes">

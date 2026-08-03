@@ -26,11 +26,11 @@ import { useDiagram } from "@/lib/useDiagram";
 
 const SAMPLE = `title "Authentication Service"
 
-user -"enter credentials"-> login-page
-login-page -"POST /auth/login"-> auth-api
+user -"enter credentials"-> login-page #blue
+login-page -"POST /auth/login"-> auth-api #blue
 auth-api -"verify password hash"-> auth-api
-auth-api -"fetch user record"-> user-db
-auth-api -"create session token"-> session-store
+auth-api -"fetch user record"-> user-db #green
+auth-api -"create session token"-> session-store #green
 session-store -"user data"-> auth-api
 auth-api -"set JWT cookie"-> login-page
 login-page -"redirect to dashboard"-> user

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildIR } from "@/core/ir";
 import { parse } from "@/core/lang";
 import { layoutGraph } from "@/core/layout";
-import { registryResolver } from "@/core/registry";
-import { escapeXml, toSVG } from "./svg";
+import { colorByName, registryResolver } from "@/core/registry";
+import { escapeXml, LIGHT_THEME, toSVG } from "./svg";
 import { toJSON } from "./json";
 
 const build = (source: string) => buildIR(parse(source), registryResolver);
@@ -112,6 +112,60 @@ describe("toSVG", () => {
   it("handles an empty document without throwing", async () => {
     const { svg } = await svgFor("");
     expect(svg).toContain("<svg");
+  });
+});
+
+describe("colour in exports", () => {
+  it("paints a tinted node with the palette's literal values", async () => {
+    const { svg } = await svgFor("api #blue");
+    const blue = colorByName("blue")!;
+    expect(svg).toContain(blue.light.fill);
+    expect(svg).toContain(blue.light.stroke);
+  });
+
+  /** A downloaded file has no stylesheet, so a var() would resolve to nothing. */
+  it("never emits a CSS variable", async () => {
+    const { svg } = await svgFor("api #blue -> db #green");
+    expect(svg).not.toContain("var(--");
+  });
+
+  it("leaves untinted nodes on the default paper and ink", async () => {
+    const { svg } = await svgFor("api");
+    expect(svg).toContain(LIGHT_THEME.paper);
+    expect(svg).toContain(LIGHT_THEME.ink);
+  });
+
+  it("tints only the node that asked for it", async () => {
+    const green = colorByName("green")!;
+    const { svg } = await svgFor("auth-api #green -> user-db");
+    expect(svg.split(green.light.stroke).length - 1).toBeGreaterThan(0);
+    expect(svg).toContain(LIGHT_THEME.paper);
+  });
+
+  it("uses the dark half of the palette for a dark theme", async () => {
+    const graph = build("api #blue");
+    const layout = await layoutGraph(graph);
+    const blue = colorByName("blue")!;
+
+    const svg = toSVG(graph, layout, {
+      mode: "sketch",
+      theme: { ink: "#eee", paper: "#222", background: "#111", scheme: "dark" },
+    });
+
+    expect(svg).toContain(blue.dark.fill);
+    expect(svg).not.toContain(blue.light.fill);
+  });
+
+  it("ignores an unknown colour rather than emitting nothing", async () => {
+    const { svg } = await svgFor("api #chartreuse");
+    expect(svg).toContain(LIGHT_THEME.paper);
+    expect(svg).not.toMatch(/fill=""/);
+  });
+
+  it("stays deterministic", async () => {
+    const a = await svgFor("api #blue -> db #amber");
+    const b = await svgFor("api #blue -> db #amber");
+    expect(b.svg).toBe(a.svg);
   });
 });
 

@@ -41,7 +41,12 @@ function toFlowNodes(
         id: node.id,
         type: "diagram" as const,
         position: { x: box.x, y: box.y },
-        data: { label: node.label, archetype: node.archetype, mode },
+        data: {
+          label: node.label,
+          archetype: node.archetype,
+          mode,
+          color: node.style?.color,
+        },
         draggable: true,
         connectable: false,
       },
@@ -103,7 +108,12 @@ function CanvasInner({
         return [
           {
             ...node,
-            data: { label: source.label, archetype: source.archetype, mode },
+            data: {
+              label: source.label,
+              archetype: source.archetype,
+              mode,
+              color: source.style?.color,
+            },
           },
         ];
       }),

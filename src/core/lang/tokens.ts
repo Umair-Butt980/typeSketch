@@ -33,6 +33,16 @@ export const Dash = createToken({ name: "Dash", pattern: /-/ });
 export const Colon = createToken({ name: "Colon", pattern: /:/ });
 
 /**
+ * An inline colour, `#blue`. `#` is otherwise unused — comments are `//` — and a
+ * `#` inside a quoted label is already swallowed by the string token, so there
+ * is nothing to disambiguate.
+ */
+export const ColorTag = createToken({
+  name: "ColorTag",
+  pattern: /#[A-Za-z][A-Za-z0-9-]*/,
+});
+
+/**
  * Identifiers may contain interior dashes (`login-page`) but a dash must be
  * followed by a word character. That is what lets `user->api` lex correctly
  * without requiring spaces: the `-` of `->` cannot be absorbed into `user`.
@@ -59,6 +69,7 @@ export const allTokens = [
   ArrowNone,
   Dash,
   Colon,
+  ColorTag,
   Title,
   Identifier,
 ];

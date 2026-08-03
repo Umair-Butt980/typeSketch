@@ -77,6 +77,44 @@ describe("classifyLine", () => {
     ]);
   });
 
+  it("classifies an inline colour", () => {
+    expect(kinds("api #blue")).toEqual(["identifier", "color"]);
+    expect(images("api #blue")).toEqual(["api", "#blue"]);
+  });
+
+  it("classifies a colour on both ends of a connection", () => {
+    expect(kinds("a #blue -> b #green")).toEqual([
+      "identifier",
+      "color",
+      "arrow",
+      "identifier",
+      "color",
+    ]);
+  });
+
+  it("classifies a colour after an archetype override", () => {
+    expect(kinds("sessions:redis #amber")).toEqual([
+      "identifier",
+      "colon",
+      "identifier",
+      "color",
+    ]);
+  });
+
+  it("leaves a # inside a label as part of the string", () => {
+    expect(kinds('a -"POST #1"-> b')).toEqual([
+      "identifier",
+      "dash",
+      "string",
+      "arrow",
+      "identifier",
+    ]);
+  });
+
+  it("treats a lone # as unknown, since it is not yet a colour", () => {
+    expect(kinds("api #")).toEqual(["identifier", "unknown"]);
+  });
+
   it("consumes an unrecognised character without losing the rest of the line", () => {
     expect(kinds("a % b")).toEqual(["identifier", "unknown", "identifier"]);
   });
@@ -117,6 +155,10 @@ describe("agreement with the Chevrotain lexer", () => {
     "user_db -> s3",
     'a -"say \\"hi\\""-> b',
     "  user   ->   api  ",
+    "api #blue",
+    "user -> auth-api #green",
+    "auth-api #blue -> user-db #amber",
+    "sessions:redis #purple",
   ];
 
   it("produces the same token boundaries as the lexer", () => {

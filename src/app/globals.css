@@ -47,6 +47,7 @@
   --syn-comment: oklch(0.63 0.02 285);
   --syn-invalid: oklch(0.55 0.2 25);
   --syn-ghost: oklch(0.66 0.02 285);
+  --syn-color-tag: oklch(0.53 0.14 320);
 
   --font-hand: "Architects Daughter", "Bradley Hand", "Segoe Print", cursive;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
@@ -87,6 +88,7 @@
   --syn-comment: oklch(0.52 0.02 285);
   --syn-invalid: oklch(0.7 0.16 25);
   --syn-ghost: oklch(0.5 0.02 285);
+  --syn-color-tag: oklch(0.78 0.11 320);
 }
 
 @theme inline {

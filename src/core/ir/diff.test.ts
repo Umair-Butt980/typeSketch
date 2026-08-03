@@ -35,6 +35,22 @@ describe("diffGraphs", () => {
     expect(diff("user -> api", "user -- api")).toBe("cosmetic");
   });
 
+  /**
+   * The guarantee that makes recolouring feel instant: adding or changing a
+   * colour repaints, it does not relayout, so nothing on the canvas moves.
+   */
+  it("treats adding a colour as cosmetic", () => {
+    expect(diff("user -> api", "user -> api #blue")).toBe("cosmetic");
+  });
+
+  it("treats changing a colour as cosmetic", () => {
+    expect(diff("user -> api #blue", "user -> api #red")).toBe("cosmetic");
+  });
+
+  it("treats removing a colour as cosmetic", () => {
+    expect(diff("user -> api #blue", "user -> api")).toBe("cosmetic");
+  });
+
   it("treats an edge label as cosmetic", () => {
     expect(diff("user -> api", 'user -"logs in"-> api')).toBe("cosmetic");
   });

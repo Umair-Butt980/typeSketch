@@ -103,6 +103,63 @@ describe("buildIR — nodes", () => {
   });
 });
 
+describe("buildIR — colour", () => {
+  it("puts the colour on the node's style", () => {
+    expect(build("api #blue").nodes[0]?.style).toEqual({ color: "blue" });
+  });
+
+  it("leaves an uncoloured node without a style", () => {
+    expect(build("api").nodes[0]?.style).toBeUndefined();
+  });
+
+  it("colours only the node it was written on", () => {
+    const graph = build("auth-api #blue -> user-db");
+    expect(graph.nodes[0]?.style).toEqual({ color: "blue" });
+    expect(graph.nodes[1]?.style).toBeUndefined();
+  });
+
+  it("is case-insensitive", () => {
+    expect(build("api #BLUE").nodes[0]?.style).toEqual({ color: "blue" });
+  });
+
+  /**
+   * Unlike an archetype, where first wins and a contradiction warns. Restating a
+   * colour further down is how you recolour something, so the last one has to
+   * take effect or that statement would silently do nothing.
+   */
+  it("lets a later colour replace an earlier one", () => {
+    const graph = build(["api #blue -> db", "api #red"].join("\n"));
+    expect(graph.nodes[0]?.style).toEqual({ color: "red" });
+    expect(graph.diagnostics).toEqual([]);
+  });
+
+  it("keeps the colour when the node is mentioned again without one", () => {
+    const graph = build(["api #blue -> db", "db -> api"].join("\n"));
+    expect(graph.nodes.find((n) => n.id === "api")?.style).toEqual({ color: "blue" });
+  });
+
+  it("warns and leaves the node untinted for an unknown colour", () => {
+    const graph = build("api #chartreuse");
+    expect(graph.nodes[0]?.style).toBeUndefined();
+    expect(graph.diagnostics[0]).toMatchObject({ severity: "warning", line: 0 });
+    expect(graph.diagnostics[0]?.message).toMatch(/unknown colour/i);
+  });
+
+  it("still draws everything else when a colour is unknown", () => {
+    const graph = build("api #nonsense -> db");
+    expect(graph.nodes).toHaveLength(2);
+    expect(graph.edges).toHaveLength(1);
+  });
+
+  it("combines with an archetype override", () => {
+    const graph = build("sessions:redis #amber");
+    expect(graph.nodes[0]).toMatchObject({
+      archetype: "cache",
+      style: { color: "amber" },
+    });
+  });
+});
+
 describe("buildIR — edges", () => {
   it("orients a forward arrow", () => {
     const graph = build("user -> api");

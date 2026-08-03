@@ -11,13 +11,19 @@ function draw(props: {
   label: string;
   archetype: string;
   mode: RenderMode;
+  color?: string;
 }) {
   const { container } = render(<NodeShape {...props} />);
   const svg = container.querySelector("svg")!;
+  const shapePaths = [...svg.querySelectorAll("path")];
   return {
     svg,
     size: { w: svg.getAttribute("width"), h: svg.getAttribute("height") },
-    paths: [...svg.querySelectorAll("path")].map((p) => p.getAttribute("d")),
+    paths: shapePaths.map((p) => p.getAttribute("d")),
+    fills: shapePaths.map((p) => p.getAttribute("fill")).filter((f) => f !== "none"),
+    strokes: shapePaths
+      .map((p) => p.getAttribute("stroke"))
+      .filter((s) => s && s !== "none"),
     text: svg.querySelector("text")?.textContent,
   };
 }
@@ -56,6 +62,77 @@ describe("NodeShape", () => {
     cleanup();
     const b = draw({ id: "user-api", label: "API", archetype: "service", mode: "sketch" });
     expect(b.paths).not.toEqual(a.paths);
+  });
+});
+
+describe("colour", () => {
+  it("paints the palette variables when tinted", () => {
+    const { fills, strokes } = draw({
+      id: "auth-api",
+      label: "Auth API",
+      archetype: "service",
+      mode: "sketch",
+      color: "blue",
+    });
+    expect(fills).toContain("var(--tint-blue-fill)");
+    expect(strokes).toContain("var(--tint-blue-stroke)");
+  });
+
+  it("falls back to paper and ink without a colour", () => {
+    const { fills, strokes } = draw({
+      id: "auth-api",
+      label: "Auth API",
+      archetype: "service",
+      mode: "sketch",
+    });
+    expect(fills).toContain("var(--paper)");
+    expect(strokes).toContain("var(--ink)");
+  });
+
+  it("draws untinted for an unknown colour rather than breaking", () => {
+    const { fills } = draw({
+      id: "x",
+      label: "X",
+      archetype: "service",
+      mode: "sketch",
+      color: "chartreuse",
+    });
+    expect(fills).toContain("var(--paper)");
+  });
+
+  /** Colour is paint, not geometry — it must not move anything. */
+  it("does not change the node's footprint", () => {
+    const plain = draw({ id: "a", label: "API", archetype: "service", mode: "sketch" });
+    cleanup();
+    const tinted = draw({
+      id: "a",
+      label: "API",
+      archetype: "service",
+      mode: "sketch",
+      color: "amber",
+    });
+    expect(tinted.size).toEqual(plain.size);
+    expect(tinted.paths).toEqual(plain.paths);
+  });
+
+  it("survives the Clean toggle at the same size", () => {
+    const sketch = draw({
+      id: "a",
+      label: "API",
+      archetype: "service",
+      mode: "sketch",
+      color: "teal",
+    });
+    cleanup();
+    const clean = draw({
+      id: "a",
+      label: "API",
+      archetype: "service",
+      mode: "clean",
+      color: "teal",
+    });
+    expect(clean.size).toEqual(sketch.size);
+    expect(clean.fills).toContain("var(--tint-teal-fill)");
   });
 });
 

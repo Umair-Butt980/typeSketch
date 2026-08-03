@@ -29,6 +29,7 @@ can type a diagram into.
 | P1c — Layout and canvas | ✅ |
 | P1d — Header, save/open, export, help | ✅ |
 | P1e — Autocomplete + syntax highlighting | ✅ |
+| P1f — Colour | ✅ |
 | P2 — Full DSL (groups, aliases, styles) | next |
 | P2.5 — Manual layout | |
 | P3 — Persistence | |

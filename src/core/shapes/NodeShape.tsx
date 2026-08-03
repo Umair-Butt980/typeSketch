@@ -6,7 +6,7 @@ import {
   shapeOffset,
   type RenderMode,
 } from "@/core/render";
-import { archetypeByName } from "@/core/registry";
+import { archetypeByName, colorByName, tintVars } from "@/core/registry";
 import { ShapePaths } from "./ShapePaths";
 
 export interface NodeShapeProps {
@@ -15,6 +15,8 @@ export interface NodeShapeProps {
   label: string;
   archetype: string;
   mode: RenderMode;
+  /** A palette colour name. Unknown names draw untinted rather than breaking. */
+  color?: string | undefined;
   /** Drawn dimmer when another node is selected. */
   muted?: boolean;
 }
@@ -26,8 +28,18 @@ export interface NodeShapeProps {
  * position. Toggling between them must not move anything, which is why
  * measurement lives outside the renderer entirely.
  */
-export function NodeShape({ id, label, archetype, mode, muted }: NodeShapeProps) {
+export function NodeShape({
+  id,
+  label,
+  archetype,
+  mode,
+  color,
+  muted,
+}: NodeShapeProps) {
   const shape = archetypeByName(archetype);
+  // The builder only ever stores valid names, but this component is also driven
+  // directly by the gallery and by tests, so an unknown name degrades quietly.
+  const tint = color && colorByName(color) ? tintVars(color) : undefined;
   const box = measureNode(shape, label);
   const offset = shapeOffset(box);
   const paths = drawShape(
@@ -49,7 +61,7 @@ export function NodeShape({ id, label, archetype, mode, muted }: NodeShapeProps)
       role="img"
     >
       <g transform={`translate(${offset.x} ${offset.y})`}>
-        <ShapePaths paths={paths} />
+        <ShapePaths paths={paths} tint={tint} />
       </g>
       <text
         x={text.x}

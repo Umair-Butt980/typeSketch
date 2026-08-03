@@ -86,6 +86,37 @@ describe("context sensitivity", () => {
   });
 });
 
+describe("colour suggestions", () => {
+  it("offers the whole palette after #", () => {
+    const result = labels("api #|");
+    expect(result).toContain("blue");
+    expect(result).toContain("amber");
+    expect(result).toContain("grey");
+  });
+
+  it("offers only colours there — no shapes, no nodes", () => {
+    const kinds = new Set(
+      completionsAt(ask("api #|")).suggestions.map((s) => s.kind),
+    );
+    expect([...kinds]).toEqual(["color"]);
+  });
+
+  it("narrows as more is typed", () => {
+    expect(labels("api #gr|")).toEqual(["green", "grey"]);
+  });
+
+  it("does not offer colours anywhere else", () => {
+    for (const spec of ["us|", "user -> ap|", "sessions:re|", "user |"]) {
+      const kinds = completionsAt(ask(spec)).suggestions.map((s) => s.kind);
+      expect(kinds, spec).not.toContain("color");
+    }
+  });
+
+  it("ghosts a colour, since it is a pure extension", () => {
+    expect(ghostFor(ask("api #blu|"))).toMatchObject({ insert: "e" });
+  });
+});
+
 /** The obstructive cases — the ones that make autocomplete hated. */
 describe("suppression", () => {
   it("suggests nothing inside a label", () => {

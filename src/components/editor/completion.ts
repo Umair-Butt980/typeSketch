@@ -14,6 +14,7 @@ const CM_TYPE: Record<SuggestionKind, string> = {
   shape: "type",
   connector: "keyword",
   snippet: "text",
+  color: "enum",
 };
 
 function toCompletion(suggestion: Suggestion): Completion {

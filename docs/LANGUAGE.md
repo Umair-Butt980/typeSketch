@@ -90,6 +90,37 @@ Contradicting yourself is also a warning, not an error: if `sessions:redis` is
 followed by `sessions:s3`, the first wins and the second is flagged. The diagram
 never flip-flops.
 
+### Colour — v1
+
+Shape says *what a thing is*. Colour says *which group it belongs to* — which is
+what you need when two services sit side by side and look identical.
+
+```
+auth-api #blue                     tint a node
+user -> billing-api #amber         works on either end of a connection
+sessions:redis #purple             combines with an explicit shape
+```
+
+Nine colours: `blue` `green` `amber` `red` `purple` `teal` `pink` `orange`
+`grey`. Each is tuned for both light and dark backgrounds, and the fill stays
+pale so the label on top of it stays readable.
+
+**The last one wins.** Writing a colour again later recolours the node:
+
+```
+auth-api #blue -> user-db
+...
+auth-api #red                      auth-api is now red
+```
+
+This is deliberately unlike an explicit shape, where the *first* wins and a
+contradiction is flagged. One node cannot be two shapes, so `sessions:redis`
+followed by `sessions:s3` is probably a mistake — but restating a colour is
+almost always you changing your mind, and it should just work.
+
+An unrecognised colour is a warning, not an error: the node draws untinted and
+everything else still renders.
+
 ## Shapes
 
 The shape comes from the name. `database`, `db`, `postgres`, `rds` and `mysql`

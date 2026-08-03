@@ -8,6 +8,7 @@ import {
   ArrowNone,
   ArrowRight,
   Colon,
+  ColorTag,
   Dash,
   Identifier,
   lexer,
@@ -60,6 +61,7 @@ class TypeSketchParser extends EmbeddedActionsParser {
   private nodeRef = this.RULE("nodeRef", (): NodeRef => {
     const name = this.CONSUME(Identifier);
     let archetype: string | undefined;
+    let color: string | undefined;
     // `positionTracking: "onlyOffset"` records start offsets only, so ends are
     // derived from the image rather than read off the token.
     let end = endOf(name);
@@ -71,12 +73,24 @@ class TypeSketchParser extends EmbeddedActionsParser {
       end = endOf(kind);
     });
 
+    // `api #blue`, or `sessions:redis #amber`. The colour rides on the node
+    // reference, so it works wherever the node is mentioned.
+    this.OPTION2(() => {
+      const tag = this.CONSUME(ColorTag);
+      color = tag.image.slice(1);
+      end = endOf(tag);
+    });
+
     const ref: NodeRef = {
       name: name.image,
       from: name.startOffset,
       to: end,
     };
-    return archetype === undefined ? ref : { ...ref, archetype };
+    return {
+      ...ref,
+      ...(archetype === undefined ? {} : { archetype }),
+      ...(color === undefined ? {} : { color }),
+    };
   });
 
   /** `->`, `<-`, `<>`, `--`, each optionally prefixed with `-"a label"`. */
